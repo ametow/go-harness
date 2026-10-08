@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -13,10 +15,42 @@ func main() {
 
 	client := &Client{BaseURL: *url, Model: *model}
 
-	reply, err := client.Chat([]Message{{Role: "user", Content: "Say hello in one short sentence."}})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+	// The model is stateless: it only "remembers" what we resend each turn,
+	// so we keep the whole conversation and grow it as we go.
+	var history []Message
+
+	fmt.Printf("Chatting with %s. Type 'exit' or press Ctrl-D to quit.\n", *model)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ")
+		if !scanner.Scan() {
+			break // EOF (Ctrl-D) or read error
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		if line == "exit" {
+			break
+		}
+
+		history = append(history, Message{Role: "user", Content: line})
+
+		reply, err := client.Chat(history)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			// Drop the unanswered user message so a retry doesn't send it twice.
+			history = history[:len(history)-1]
+			continue
+		}
+
+		history = append(history, reply)
+		fmt.Println(reply.Content)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "read error:", err)
 		os.Exit(1)
 	}
-	fmt.Println(reply.Content)
 }
