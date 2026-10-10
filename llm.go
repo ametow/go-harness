@@ -9,8 +9,36 @@ import (
 
 // Message is one turn in a conversation. Role is "system", "user" or "assistant".
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // set on assistant replies that want a tool run
+	ToolName  string     `json:"tool_name,omitempty"`  // set on role "tool" messages carrying a result
+}
+
+// ToolCall is the model asking us to run a tool.
+type ToolCall struct {
+	Function struct {
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	} `json:"function"`
+}
+
+// toolDef is how a Tool is described to Ollama.
+type toolDef struct {
+	Type     string `json:"type"` // always "function"
+	Function struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		Parameters  map[string]any `json:"parameters"`
+	} `json:"function"`
+}
+
+func newToolDef(t Tool) toolDef {
+	d := toolDef{Type: "function"}
+	d.Function.Name = t.Name()
+	d.Function.Description = t.Description()
+	d.Function.Parameters = t.Parameters()
+	return d
 }
 
 // Client talks to Ollama's HTTP API.
@@ -22,6 +50,7 @@ type Client struct {
 type chatRequest struct {
 	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
+	Tools    []toolDef `json:"tools,omitempty"`
 	Stream   bool      `json:"stream"` // false: get one complete JSON reply instead of chunks
 }
 
@@ -30,9 +59,14 @@ type chatResponse struct {
 	Error   string  `json:"error"`
 }
 
-// Chat sends the conversation to the model and returns its reply.
-func (c *Client) Chat(messages []Message) (Message, error) {
-	body, err := json.Marshal(chatRequest{Model: c.Model, Messages: messages})
+// Chat sends the conversation to the model and returns its reply. If tools are
+// given, the reply may contain ToolCalls instead of (or alongside) text.
+func (c *Client) Chat(messages []Message, tools []Tool) (Message, error) {
+	req := chatRequest{Model: c.Model, Messages: messages}
+	for _, t := range tools {
+		req.Tools = append(req.Tools, newToolDef(t))
+	}
+	body, err := json.Marshal(req)
 	if err != nil {
 		return Message{}, fmt.Errorf("encode request: %w", err)
 	}
