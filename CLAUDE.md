@@ -20,12 +20,24 @@ The core is a simple loop:
 2. If the response contains tool calls, run them and append the results as messages.
 3. Repeat until the model replies with plain text and no tool calls.
 
-Planned pieces, to be added incrementally and in roughly this order:
+## Roadmap
 
-1. LLM client: one function that POSTs to Ollama's `/api/chat` and returns the reply.
-2. Chat loop: read a line from stdin, call the model, print the answer.
-3. Tool calling: a small `Tool` interface plus one or two trivial tools (e.g. read a file, get the time).
-4. The agent loop: run tools and feed results back until done.
+Built one step at a time, in order. Each step is reviewed and committed before the next starts. Update the checkboxes as steps land.
+
+- [x] 1. **LLM client:** `Client.Chat` POSTs to Ollama's `/api/chat` and returns the reply. (`llm.go`)
+- [x] 2. **Chat loop:** read a line from stdin, keep the history, print the answer. (`main.go`)
+- [x] 3. **Tool calling:** a `Tool` interface, `current_time` and `read_file` tools, tool definitions sent to the model, tool calls parsed and run. (`tools.go`)
+- [x] 4. **Agent loop:** after running tools, feed the results back to the model and repeat until it replies with plain text. Add a max-iterations guard.
+- [ ] 5. **More tools and safety:** a few more useful tools (e.g. list directory, write file, run command), with limits such as a working-directory sandbox, output size caps and confirmation before anything destructive.
+- [ ] 6. **System prompt and config:** a system prompt, plus settings (model, endpoint, limits) from flags or env vars.
+- [ ] 7. **Streaming:** print the reply token by token instead of waiting for the full response.
+- [ ] 8. **MCP servers:** act as an MCP client, speaking JSON-RPC over stdio to external servers, discovering their tools and exposing them like built-in ones. Hand-rolled, no SDK.
+- [ ] 9. **Persistent memory:** save and load conversations on disk, then longer-term facts the agent can recall across sessions. Start with plain JSON files.
+- [ ] 10. **Context management:** keep the history within the model's context window by trimming or summarizing old turns.
+- [ ] 11. **Model routing:** pick a model per task (e.g. a small fast model for simple turns, a larger one for tool use or hard problems), with a simple rule-based router first.
+- [ ] 12. **Polish:** tests for the pure logic, error handling and logging, and a README.
+
+The order can change as we learn. Ask the owner before reordering or adding steps.
 
 ## Conventions
 
@@ -49,4 +61,4 @@ go test ./...     # run tests
 
 - Default endpoint: `http://localhost:11434` (Ollama).
 - Model name is configured via a flag or env var, not hardcoded deep in the code.
-- Ollama must be running (`ollama serve`) with a tool-capable model pulled.
+- Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen2.5:7b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
