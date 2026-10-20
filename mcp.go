@@ -142,3 +142,64 @@ func (c *MCPClient) send(req rpcRequest) error {
 	}
 	return nil
 }
+
+// mcpToolInfo is one tool as described by a server's tools/list reply.
+type mcpToolInfo struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"` // JSON Schema, same shape Ollama wants
+}
+
+// ListTools asks the server what tools it offers and returns them as Tools,
+// so the rest of the harness can treat them like the built-in ones.
+func (c *MCPClient) ListTools() ([]Tool, error) {
+	var tools []Tool
+	cursor := ""
+	for {
+		// Big tool lists come in pages; a non-empty nextCursor means "ask again".
+		var params map[string]any
+		if cursor != "" {
+			params = map[string]any{"cursor": cursor}
+		}
+		result, err := c.call("tools/list", params)
+		if err != nil {
+			return nil, err
+		}
+
+		var page struct {
+			Tools      []mcpToolInfo `json:"tools"`
+			NextCursor string        `json:"nextCursor"`
+		}
+		if err := json.Unmarshal(result, &page); err != nil {
+			return nil, fmt.Errorf("decode tools/list result: %w", err)
+		}
+		for _, info := range page.Tools {
+			tools = append(tools, &mcpTool{client: c, info: info})
+		}
+
+		if page.NextCursor == "" {
+			return tools, nil
+		}
+		cursor = page.NextCursor
+	}
+}
+
+// mcpTool adapts a server-side tool to our Tool interface.
+type mcpTool struct {
+	client *MCPClient
+	info   mcpToolInfo
+}
+
+func (t *mcpTool) Name() string        { return t.info.Name }
+func (t *mcpTool) Description() string { return t.info.Description }
+func (t *mcpTool) Parameters() map[string]any {
+	if t.info.InputSchema == nil {
+		return map[string]any{"type": "object", "properties": map[string]any{}}
+	}
+	return t.info.InputSchema
+}
+
+// Run is a placeholder: calling the tool (tools/call) comes in step 8c.
+func (t *mcpTool) Run(map[string]any) (string, error) {
+	return "", fmt.Errorf("MCP tool %q cannot be called yet", t.info.Name)
+}
