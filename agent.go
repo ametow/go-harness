@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // maxSteps caps model calls per user message, so a model that keeps asking
 // for tools can't loop forever.
@@ -46,9 +49,23 @@ func runTool(tools []Tool, call ToolCall) string {
 	if !ok {
 		return fmt.Sprintf("error: unknown tool %q", call.Function.Name)
 	}
+	// Tools that can change the machine need a human yes first. A refusal is
+	// returned as text so the model knows and can pick another approach.
+	if c, ok := tool.(Confirmable); ok && !confirm(c.NeedsConfirmation(call.Function.Arguments)) {
+		return "error: the user declined this tool call; do not retry it"
+	}
 	out, err := tool.Run(call.Function.Arguments)
 	if err != nil {
 		return "error: " + err.Error()
 	}
 	return out
+}
+
+// confirm shows what is about to run and waits for y/yes on the shared input.
+// Anything else, including EOF, counts as no: the safe default.
+func confirm(description string) bool {
+	fmt.Printf("Allow %s? [y/N] ", description)
+	answer, _ := input.ReadString('\n')
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes"
 }

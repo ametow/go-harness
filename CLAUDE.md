@@ -28,7 +28,7 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 - [x] 2. **Chat loop:** read a line from stdin, keep the history, print the answer. (`main.go`)
 - [x] 3. **Tool calling:** a `Tool` interface, `current_time` and `read_file` tools, tool definitions sent to the model, tool calls parsed and run. (`tools.go`)
 - [x] 4. **Agent loop:** after running tools, feed the results back to the model and repeat until it replies with plain text. Add a max-iterations guard.
-- [ ] 5. **More tools and safety:** a few more useful tools (e.g. list directory, write file, run command), with limits such as a working-directory sandbox, output size caps and confirmation before anything destructive.
+- [x] 5. **More tools and safety:** a few more useful tools (e.g. list directory, write file, run command), with limits such as a working-directory sandbox, output size caps and confirmation before anything destructive.
 - [ ] 6. **System prompt and config:** a system prompt, plus settings (model, endpoint, limits) from flags or env vars.
 - [ ] 7. **Streaming:** print the reply token by token instead of waiting for the full response.
 - [ ] 8. **MCP servers:** act as an MCP client, speaking JSON-RPC over stdio to external servers, discovering their tools and exposing them like built-in ones. Hand-rolled, no SDK.
@@ -61,4 +61,4 @@ go test ./...     # run tests
 
 - Default endpoint: `http://localhost:11434` (Ollama).
 - Model name is configured via a flag or env var, not hardcoded deep in the code.
-- Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen2.5:7b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
+- Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen3.5:9b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
