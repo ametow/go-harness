@@ -30,7 +30,7 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 - [x] 4. **Agent loop:** after running tools, feed the results back to the model and repeat until it replies with plain text. Add a max-iterations guard.
 - [x] 5. **More tools and safety:** a few more useful tools (e.g. list directory, write file, run command), with limits such as a working-directory sandbox, output size caps and confirmation before anything destructive.
 - [x] 6. **System prompt and config:** a system prompt, plus settings (model, endpoint, limits) from flags or env vars.
-- [ ] 7. **Streaming:** print the reply token by token instead of waiting for the full response.
+- [x] 7. **Streaming:** print the reply token by token instead of waiting for the full response.
 - [ ] 8. **MCP servers:** act as an MCP client, speaking JSON-RPC over stdio to external servers, discovering their tools and exposing them like built-in ones. Hand-rolled, no SDK.
 - [ ] 9. **Persistent memory:** save and load conversations on disk, then longer-term facts the agent can recall across sessions. Start with plain JSON files.
 - [ ] 10. **Context management:** keep the history within the model's context window by trimming or summarizing old turns.

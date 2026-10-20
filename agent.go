@@ -12,14 +12,14 @@ import (
 // everything that happened.
 func runTurn(client *Client, history []Message, tools []Tool, maxSteps int) ([]Message, error) {
 	for step := 0; step < maxSteps; step++ {
-		reply, err := client.Chat(history, tools)
+		reply, err := client.Chat(history, tools, func(tok string) { fmt.Print(tok) })
 		if err != nil {
 			return history, err
 		}
 		history = append(history, reply)
 
 		if reply.Content != "" {
-			fmt.Println(reply.Content)
+			fmt.Println() // tokens were printed as they arrived; end the line
 		}
 
 		// No tool calls means the model is done and this is its final answer.

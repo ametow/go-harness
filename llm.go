@@ -51,18 +51,23 @@ type chatRequest struct {
 	Model    string    `json:"model"`
 	Messages []Message `json:"messages"`
 	Tools    []toolDef `json:"tools,omitempty"`
-	Stream   bool      `json:"stream"` // false: get one complete JSON reply instead of chunks
+	Stream   bool      `json:"stream"` // true: reply arrives as a series of small JSON chunks
 }
 
-type chatResponse struct {
+// chatChunk is one line of the streamed response. Content holds a few tokens
+// of text; the last chunk has Done set.
+type chatChunk struct {
 	Message Message `json:"message"`
+	Done    bool    `json:"done"`
 	Error   string  `json:"error"`
 }
 
-// Chat sends the conversation to the model and returns its reply. If tools are
-// given, the reply may contain ToolCalls instead of (or alongside) text.
-func (c *Client) Chat(messages []Message, tools []Tool) (Message, error) {
-	req := chatRequest{Model: c.Model, Messages: messages}
+// Chat sends the conversation to the model and returns its full reply. The
+// reply is streamed: onToken (if not nil) is called with each piece of text as
+// it arrives, so the caller can show it live. If tools are given, the reply
+// may contain ToolCalls instead of (or alongside) text.
+func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (Message, error) {
+	req := chatRequest{Model: c.Model, Messages: messages, Stream: true}
 	for _, t := range tools {
 		req.Tools = append(req.Tools, newToolDef(t))
 	}
@@ -77,12 +82,27 @@ func (c *Client) Chat(messages []Message, tools []Tool) (Message, error) {
 	}
 	defer resp.Body.Close()
 
-	var out chatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return Message{}, fmt.Errorf("decode response (status %s): %w", resp.Status, err)
+	// The body is a stream of JSON objects, one per chunk. Decoder reads them
+	// one at a time. We stitch the chunks into a single message.
+	reply := Message{Role: "assistant"}
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var chunk chatChunk
+		if err := dec.Decode(&chunk); err != nil {
+			return Message{}, fmt.Errorf("decode response (status %s): %w", resp.Status, err)
+		}
+		if chunk.Error != "" {
+			return Message{}, fmt.Errorf("ollama error: %s", chunk.Error)
+		}
+
+		reply.Content += chunk.Message.Content
+		reply.ToolCalls = append(reply.ToolCalls, chunk.Message.ToolCalls...)
+		if onToken != nil && chunk.Message.Content != "" {
+			onToken(chunk.Message.Content)
+		}
+
+		if chunk.Done {
+			return reply, nil
+		}
 	}
-	if out.Error != "" {
-		return Message{}, fmt.Errorf("ollama error: %s", out.Error)
-	}
-	return out.Message, nil
 }
