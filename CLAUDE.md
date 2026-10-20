@@ -31,10 +31,10 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 - [x] 5. **More tools and safety:** a few more useful tools (e.g. list directory, write file, run command), with limits such as a working-directory sandbox, output size caps and confirmation before anything destructive.
 - [x] 6. **System prompt and config:** a system prompt, plus settings (model, endpoint, limits) from flags or env vars.
 - [x] 7. **Streaming:** print the reply token by token instead of waiting for the full response.
-- [ ] 8. **MCP servers:** act as an MCP client, speaking JSON-RPC over stdio to external servers, discovering their tools and exposing them like built-in ones. Hand-rolled, no SDK. Built in three parts:
+- [x] 8. **MCP servers:** act as an MCP client, speaking JSON-RPC over stdio to external servers, discovering their tools and exposing them like built-in ones. Hand-rolled, no SDK. Built in three parts:
   - [x] 8a. JSON-RPC over stdio and the `initialize` handshake. (`mcp.go`)
   - [x] 8b. Tool discovery: `tools/list`, wrapping each server tool as a `Tool`. (`mcp.go`)
-  - [ ] 8c. Config file to choose servers, `tools/call`, and the confirmation gate for MCP tools.
+  - [x] 8c. Config file to choose servers, `tools/call`, and the confirmation gate for MCP tools. (`mcpconfig.go`)
 - [ ] 9. **Persistent memory:** save and load conversations on disk, then longer-term facts the agent can recall across sessions. Start with plain JSON files.
 - [ ] 10. **Context management:** keep the history within the model's context window by trimming or summarizing old turns.
 - [ ] 11. **Model routing:** pick a model per task (e.g. a small fast model for simple turns, a larger one for tool use or hard problems), with a simple rule-based router first.
@@ -63,5 +63,15 @@ go test ./...     # run tests
 ## Local LLM
 
 - Default endpoint: `http://localhost:11434` (Ollama).
-- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`.
+- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`.
 - Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen3.5:9b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
+
+## MCP servers
+
+External tools come from MCP servers listed in `mcp.json` (path set by `-mcp-config`; a missing default file just means no servers):
+
+```json
+{"mcpServers": {"fs": {"command": "npx", "args": ["-y", "some-mcp-server", "/path"]}}}
+```
+
+Each tool is exposed to the model as `<server>__<tool>`. Every MCP tool call asks for y/N confirmation. A server that fails to start is skipped with a warning.

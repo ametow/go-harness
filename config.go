@@ -7,6 +7,9 @@ import (
 	"strconv"
 )
 
+// defaultMCPConfig is looked for in the current directory; it's fine if it's absent.
+const defaultMCPConfig = "mcp.json"
+
 const defaultSystemPrompt = `You are a helpful assistant running in a terminal on the user's computer.
 Answer directly and briefly in plain text.
 You have tools. Use one only when the request needs it: for example, the current time, a file's contents, a directory listing, or running a command.
@@ -15,10 +18,11 @@ If a tool returns an error, read it and try a different approach, or tell the us
 
 // Config holds the settings that change between runs.
 type Config struct {
-	Model    string
-	URL      string
-	System   string
-	MaxSteps int
+	Model     string
+	URL       string
+	System    string
+	MaxSteps  int
+	MCPConfig string
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -36,6 +40,7 @@ func parseConfig(args []string) (Config, error) {
 	fs.StringVar(&c.URL, "url", envOr("HARNESS_URL", "http://localhost:11434"), "Ollama base URL (env HARNESS_URL)")
 	fs.StringVar(&c.System, "system", envOr("HARNESS_SYSTEM", defaultSystemPrompt), "system prompt (env HARNESS_SYSTEM)")
 	fs.IntVar(&c.MaxSteps, "max-steps", steps, "max model calls per message (env HARNESS_MAX_STEPS)")
+	fs.StringVar(&c.MCPConfig, "mcp-config", envOr("HARNESS_MCP_CONFIG", defaultMCPConfig), "MCP servers config file (env HARNESS_MCP_CONFIG)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

@@ -3,10 +3,13 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
+	"time"
 )
 
 // mcpProtocolVersion is the MCP revision we speak. The server replies with
@@ -21,6 +24,10 @@ type MCPClient struct {
 	stdin  io.WriteCloser
 	stdout *bufio.Reader
 	nextID int
+
+	// timeout bounds how long we wait for any one reply, so a hung server
+	// can't freeze the whole agent.
+	timeout time.Duration
 }
 
 // rpcRequest is a JSON-RPC request. A notification is the same thing without
@@ -68,7 +75,7 @@ func StartMCP(command string, args ...string) (*MCPClient, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", command, err)
 	}
-	return &MCPClient{cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout)}, nil
+	return &MCPClient{cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout), timeout: 30 * time.Second}, nil
 }
 
 // Initialize performs the MCP handshake: send "initialize", read the server's
@@ -103,8 +110,32 @@ func (c *MCPClient) Close() error {
 	return c.cmd.Wait()
 }
 
-// call sends a request and waits for the response with the matching ID.
+// call sends a request and waits for the reply, giving up after c.timeout.
+// Reads from a pipe can't be interrupted, so the exchange runs in a goroutine.
+// On timeout we kill the server: its output stream is now out of step with
+// our requests, so the connection can't be trusted any more.
 func (c *MCPClient) call(method string, params any) (json.RawMessage, error) {
+	type outcome struct {
+		result json.RawMessage
+		err    error
+	}
+	done := make(chan outcome, 1) // buffered so the goroutine never blocks if we gave up
+	go func() {
+		result, err := c.roundTrip(method, params)
+		done <- outcome{result, err}
+	}()
+
+	select {
+	case o := <-done:
+		return o.result, o.err
+	case <-time.After(c.timeout):
+		c.cmd.Process.Kill() // also unblocks the goroutine's read
+		return nil, fmt.Errorf("%s: no reply from server after %s (server killed)", method, c.timeout)
+	}
+}
+
+// roundTrip sends a request and reads until the response with the matching ID.
+func (c *MCPClient) roundTrip(method string, params any) (json.RawMessage, error) {
 	c.nextID++
 	id := c.nextID
 	if err := c.send(rpcRequest{JSONRPC: "2.0", ID: &id, Method: method, Params: params}); err != nil {
@@ -151,8 +182,10 @@ type mcpToolInfo struct {
 }
 
 // ListTools asks the server what tools it offers and returns them as Tools,
-// so the rest of the harness can treat them like the built-in ones.
-func (c *MCPClient) ListTools() ([]Tool, error) {
+// so the rest of the harness can treat them like the built-in ones. prefix is
+// added to each name the model sees (e.g. "fs__") so tools from different
+// servers, or built-ins, can't collide; the server still gets the original name.
+func (c *MCPClient) ListTools(prefix string) ([]Tool, error) {
 	var tools []Tool
 	cursor := ""
 	for {
@@ -174,7 +207,7 @@ func (c *MCPClient) ListTools() ([]Tool, error) {
 			return nil, fmt.Errorf("decode tools/list result: %w", err)
 		}
 		for _, info := range page.Tools {
-			tools = append(tools, &mcpTool{client: c, info: info})
+			tools = append(tools, &mcpTool{client: c, name: prefix + info.Name, info: info})
 		}
 
 		if page.NextCursor == "" {
@@ -187,10 +220,11 @@ func (c *MCPClient) ListTools() ([]Tool, error) {
 // mcpTool adapts a server-side tool to our Tool interface.
 type mcpTool struct {
 	client *MCPClient
+	name   string // what the model sees (prefixed); info.Name is what the server knows
 	info   mcpToolInfo
 }
 
-func (t *mcpTool) Name() string        { return t.info.Name }
+func (t *mcpTool) Name() string        { return t.name }
 func (t *mcpTool) Description() string { return t.info.Description }
 func (t *mcpTool) Parameters() map[string]any {
 	if t.info.InputSchema == nil {
@@ -199,7 +233,44 @@ func (t *mcpTool) Parameters() map[string]any {
 	return t.info.InputSchema
 }
 
-// Run is a placeholder: calling the tool (tools/call) comes in step 8c.
-func (t *mcpTool) Run(map[string]any) (string, error) {
-	return "", fmt.Errorf("MCP tool %q cannot be called yet", t.info.Name)
+// NeedsConfirmation makes every MCP tool ask first: we know nothing about what
+// a third-party server's tool does, so the user decides each time.
+func (t *mcpTool) NeedsConfirmation(args map[string]any) string {
+	return fmt.Sprintf("MCP tool %s %v", t.name, args)
+}
+
+// Run asks the server to execute the tool (tools/call) and returns its text.
+func (t *mcpTool) Run(args map[string]any) (string, error) {
+	if args == nil {
+		args = map[string]any{} // the protocol wants an object, never null
+	}
+	result, err := t.client.call("tools/call", map[string]any{"name": t.info.Name, "arguments": args})
+	if err != nil {
+		return "", err
+	}
+
+	var res struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"` // the tool ran but failed; distinct from a protocol error
+	}
+	if err := json.Unmarshal(result, &res); err != nil {
+		return "", fmt.Errorf("decode tools/call result: %w", err)
+	}
+
+	var parts []string
+	for _, c := range res.Content {
+		if c.Type == "text" {
+			parts = append(parts, c.Text)
+		} else {
+			parts = append(parts, fmt.Sprintf("[%s content omitted]", c.Type)) // images etc. aren't supported yet
+		}
+	}
+	text := truncate(strings.Join(parts, "\n"))
+	if res.IsError {
+		return "", errors.New(text)
+	}
+	return text, nil
 }

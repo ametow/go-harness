@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestHelperProcess isn't a real test. When the env var is set, the test
@@ -22,7 +23,11 @@ func TestHelperProcess(t *testing.T) {
 			ID     *int   `json:"id"`
 			Method string `json:"method"`
 			Params struct {
-				Cursor string `json:"cursor"`
+				Cursor    string `json:"cursor"`
+				Name      string `json:"name"`
+				Arguments struct {
+					Text string `json:"text"`
+				} `json:"arguments"`
 			} `json:"params"`
 		}
 		json.Unmarshal(in.Bytes(), &req)
@@ -41,6 +46,14 @@ func TestHelperProcess(t *testing.T) {
 			} else {
 				fmt.Printf(`{"jsonrpc":"2.0","id":%d,"result":{"tools":[{"name":"ping"}]}}`+"\n", *req.ID)
 			}
+		case "tools/call":
+			if req.Params.Name == "fail" {
+				fmt.Printf(`{"jsonrpc":"2.0","id":%d,"result":{"isError":true,"content":[{"type":"text","text":"it broke"}]}}`+"\n", *req.ID)
+			} else {
+				fmt.Printf(`{"jsonrpc":"2.0","id":%d,"result":{"content":[{"type":"text","text":"Echo: %s"},{"type":"image","data":"x"}]}}`+"\n", *req.ID, req.Params.Arguments.Text)
+			}
+		case "hang":
+			time.Sleep(time.Hour) // never reply (select{} would trip Go's deadlock detector and exit)
 		default:
 			fmt.Printf(`{"jsonrpc":"2.0","id":%d,"error":{"code":-32601,"message":"method not found"}}`+"\n", *req.ID)
 		}
@@ -89,7 +102,7 @@ func TestMCPListTools(t *testing.T) {
 	if _, err := c.Initialize(); err != nil {
 		t.Fatal(err)
 	}
-	tools, err := c.ListTools()
+	tools, err := c.ListTools("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +126,64 @@ func TestMCPListTools(t *testing.T) {
 	if d := newToolDef(echo); d.Function.Name != "echo" {
 		t.Fatalf("toolDef = %+v", d)
 	}
-	if _, err := echo.Run(nil); err == nil {
-		t.Fatal("Run should not work until step 8c")
+}
+
+func TestMCPToolPrefix(t *testing.T) {
+	c := startFake(t)
+	tools, err := c.ListTools("fake__")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tools[0].Name() != "fake__echo" {
+		t.Fatalf("name = %q", tools[0].Name())
+	}
+	// The server must still be called by its own name, not the prefixed one.
+	out, err := tools[0].Run(map[string]any{"text": "hi"})
+	if err != nil || !strings.HasPrefix(out, "Echo: hi") {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+}
+
+func TestMCPToolRun(t *testing.T) {
+	c := startFake(t)
+	tests := []struct {
+		name    string
+		tool    string
+		want    string
+		wantErr bool
+	}{
+		{"text and skipped image", "echo", "Echo: hi\n[image content omitted]", false},
+		{"tool reports failure", "fail", "it broke", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tool := &mcpTool{client: c, name: tt.tool, info: mcpToolInfo{Name: tt.tool}}
+			out, err := tool.Run(map[string]any{"text": "hi"})
+			if tt.wantErr {
+				if err == nil || err.Error() != tt.want {
+					t.Fatalf("err = %v, want %q", err, tt.want)
+				}
+				return
+			}
+			if err != nil || out != tt.want {
+				t.Fatalf("out = %q, err = %v, want %q", out, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestMCPToolNeedsConfirmation(t *testing.T) {
+	var tool Tool = &mcpTool{name: "fs__write"}
+	if _, ok := tool.(Confirmable); !ok {
+		t.Fatal("MCP tools must ask for confirmation")
+	}
+}
+
+func TestMCPCallTimeout(t *testing.T) {
+	c := startFake(t)
+	c.timeout = 100 * time.Millisecond
+	_, err := c.call("hang", nil)
+	if err == nil || !strings.Contains(err.Error(), "no reply") {
+		t.Fatalf("err = %v, want timeout", err)
 	}
 }

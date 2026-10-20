@@ -31,6 +31,16 @@ func main() {
 
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}}
 
+	// Tools from external MCP servers join the built-in ones.
+	servers, err := loadMCPConfig(cfg.MCPConfig, cfg.MCPConfig == defaultMCPConfig)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
+	}
+	mcpTools, mcpClients := connectMCPServers(servers)
+	defer closeMCP(mcpClients)
+	tools = append(tools, mcpTools...)
+
 	fmt.Printf("Chatting with %s. Type 'exit' or press Ctrl-D to quit.\n", cfg.Model)
 
 	for {
@@ -40,6 +50,7 @@ func main() {
 		if err != nil && line == "" {
 			if err != io.EOF {
 				fmt.Fprintln(os.Stderr, "read error:", err)
+				closeMCP(mcpClients) // os.Exit skips deferred calls
 				os.Exit(1)
 			}
 			break // Ctrl-D
@@ -60,5 +71,11 @@ func main() {
 			// Roll back the whole failed turn so a retry starts clean.
 			history = history[:before]
 		}
+	}
+}
+
+func closeMCP(clients []*MCPClient) {
+	for _, c := range clients {
+		c.Close()
 	}
 }
