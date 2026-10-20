@@ -14,19 +14,24 @@ import (
 var input = bufio.NewReader(os.Stdin)
 
 func main() {
-	model := flag.String("model", "qwen3.5:9b", "Ollama model name")
-	url := flag.String("url", "http://localhost:11434", "Ollama base URL")
-	flag.Parse()
+	cfg, err := parseConfig(os.Args[1:])
+	if err != nil {
+		if err != flag.ErrHelp {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
+		os.Exit(2)
+	}
 
-	client := &Client{BaseURL: *url, Model: *model}
+	client := &Client{BaseURL: cfg.URL, Model: cfg.Model}
 
 	// The model is stateless: it only "remembers" what we resend each turn,
 	// so we keep the whole conversation and grow it as we go.
-	var history []Message
+	// The system message goes first and is never trimmed or rolled back.
+	history := []Message{{Role: "system", Content: cfg.System}}
 
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}}
 
-	fmt.Printf("Chatting with %s. Type 'exit' or press Ctrl-D to quit.\n", *model)
+	fmt.Printf("Chatting with %s. Type 'exit' or press Ctrl-D to quit.\n", cfg.Model)
 
 	for {
 		fmt.Print("> ")
@@ -49,7 +54,7 @@ func main() {
 		before := len(history)
 		history = append(history, Message{Role: "user", Content: line})
 
-		history, err = runTurn(client, history, tools)
+		history, err = runTurn(client, history, tools, cfg.MaxSteps)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			// Roll back the whole failed turn so a retry starts clean.

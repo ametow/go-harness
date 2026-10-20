@@ -5,14 +5,12 @@ import (
 	"strings"
 )
 
-// maxSteps caps model calls per user message, so a model that keeps asking
-// for tools can't loop forever.
-const maxSteps = 10
-
 // runTurn handles one user message: call the model, run any tools it asks
 // for, send the results back, and repeat until it answers in plain text.
-// It returns the history extended with everything that happened.
-func runTurn(client *Client, history []Message, tools []Tool) ([]Message, error) {
+// maxSteps caps model calls per user message, so a model that keeps asking
+// for tools can't loop forever. It returns the history extended with
+// everything that happened.
+func runTurn(client *Client, history []Message, tools []Tool, maxSteps int) ([]Message, error) {
 	for step := 0; step < maxSteps; step++ {
 		reply, err := client.Chat(history, tools)
 		if err != nil {
