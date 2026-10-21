@@ -79,7 +79,7 @@ func main() {
 		before := len(history)
 		history = append(history, Message{Role: "user", Content: line})
 
-		history, err = runTurn(client, history, tools, cfg.MaxSteps)
+		history, err = runTurn(client, history, tools, cfg.MaxSteps, cfg.ContextTokens)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			// Roll back the whole failed turn so a retry starts clean.

@@ -34,6 +34,8 @@ type Config struct {
 	Session   string // file the conversation is saved to and resumed from
 	NewChat   bool   // ignore any saved conversation and start fresh
 	Memory    string // file of long-term notes, kept across conversations
+
+	ContextTokens int // estimated tokens of history to send per call; 0 = no limit
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -41,6 +43,11 @@ type Config struct {
 // so it can be tested.
 func parseConfig(args []string) (Config, error) {
 	steps, err := envInt("HARNESS_MAX_STEPS", 10)
+	if err != nil {
+		return Config{}, err
+	}
+
+	contextTokens, err := envInt("HARNESS_CONTEXT_TOKENS", 4000)
 	if err != nil {
 		return Config{}, err
 	}
@@ -55,8 +62,12 @@ func parseConfig(args []string) (Config, error) {
 	fs.StringVar(&c.Session, "session", envOr("HARNESS_SESSION", defaultSession), "conversation file to save and resume (env HARNESS_SESSION)")
 	fs.BoolVar(&c.NewChat, "new", false, "start a fresh conversation instead of resuming the saved one")
 	fs.StringVar(&c.Memory, "memory", envOr("HARNESS_MEMORY", defaultMemory), "long-term notes file (env HARNESS_MEMORY)")
+	fs.IntVar(&c.ContextTokens, "context-tokens", contextTokens, "estimated tokens of history sent per call, 0 for no limit (env HARNESS_CONTEXT_TOKENS)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
+	}
+	if c.ContextTokens < 0 {
+		return Config{}, fmt.Errorf("context-tokens must be 0 or more, got %d", c.ContextTokens)
 	}
 	if c.MaxSteps < 1 {
 		return Config{}, fmt.Errorf("max-steps must be at least 1, got %d", c.MaxSteps)

@@ -38,7 +38,9 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 - [x] 9. **Persistent memory:** Built in two parts:
   - [x] 9a. Save the conversation to a JSON file after every turn and resume it on start. (`session.go`)
   - [x] 9b. Long-term facts: `remember` and `recall` tools backed by a JSON file, so the agent keeps notes across sessions and `-new` chats. (`memory.go`)
-- [ ] 10. **Context management:** keep the history within the model's context window by trimming or summarizing old turns.
+- [ ] 10. **Context management:** keep the history within the model's context window. Built in two parts:
+  - [x] 10a. Trimming: estimate history size and stop sending the oldest turns once over a token budget. (`context.go`)
+  - [ ] 10b. Summarizing: condense the dropped turns into one summary message instead of forgetting them.
 - [ ] 11. **Model routing:** pick a model per task (e.g. a small fast model for simple turns, a larger one for tool use or hard problems), with a simple rule-based router first.
 - [ ] 12. **Polish:** tests for the pure logic, error handling and logging, and a README.
 
@@ -65,7 +67,7 @@ go test ./...     # run tests
 ## Local LLM
 
 - Default endpoint: `http://localhost:11434` (Ollama).
-- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, `-new` (ignore the saved conversation), and `-memory`/`HARNESS_MEMORY`.
+- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, `-new` (ignore the saved conversation), `-memory`/`HARNESS_MEMORY`, and `-context-tokens`/`HARNESS_CONTEXT_TOKENS` (default 4000 estimated tokens of history per call; 0 = no limit). Keep it below Ollama's `num_ctx` for the model.
 - Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen3.5:9b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
 
 ## MCP servers

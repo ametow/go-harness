@@ -10,9 +10,15 @@ import (
 // maxSteps caps model calls per user message, so a model that keeps asking
 // for tools can't loop forever. It returns the history extended with
 // everything that happened.
-func runTurn(client *Client, history []Message, tools []Tool, maxSteps int) ([]Message, error) {
+func runTurn(client *Client, history []Message, tools []Tool, maxSteps, contextTokens int) ([]Message, error) {
 	for step := 0; step < maxSteps; step++ {
-		reply, err := client.Chat(history, tools, func(tok string) { fmt.Print(tok) })
+		// Send a trimmed view; `history` itself stays complete for saving.
+		view, dropped := trimHistory(history, contextTokens)
+		if dropped > 0 && step == 0 {
+			fmt.Printf("[context full: not sending the %d oldest messages]\n", dropped)
+		}
+
+		reply, err := client.Chat(view, tools, func(tok string) { fmt.Print(tok) })
 		if err != nil {
 			return history, err
 		}
