@@ -39,6 +39,7 @@ type Config struct {
 	Summarize     bool // summarize turns that no longer fit instead of just dropping them
 
 	FastModel string // small model for simple chit-chat; empty turns routing off
+	Verbose   bool   // log every model call to stderr
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -60,6 +61,11 @@ func parseConfig(args []string) (Config, error) {
 		return Config{}, err
 	}
 
+	verbose, err := envBool("HARNESS_VERBOSE", false)
+	if err != nil {
+		return Config{}, err
+	}
+
 	var c Config
 	fs := flag.NewFlagSet("go-harness", flag.ContinueOnError)
 	fs.StringVar(&c.Model, "model", envOr("HARNESS_MODEL", "qwen3.5:9b"), "Ollama model name (env HARNESS_MODEL)")
@@ -73,6 +79,7 @@ func parseConfig(args []string) (Config, error) {
 	fs.IntVar(&c.ContextTokens, "context-tokens", contextTokens, "estimated tokens of history sent per call, 0 for no limit (env HARNESS_CONTEXT_TOKENS)")
 	fs.BoolVar(&c.Summarize, "summarize", summarize, "summarize old turns that no longer fit (env HARNESS_SUMMARIZE)")
 	fs.StringVar(&c.FastModel, "fast-model", envOr("HARNESS_FAST_MODEL", ""), "small model for simple chat; empty disables routing (env HARNESS_FAST_MODEL)")
+	fs.BoolVar(&c.Verbose, "verbose", verbose, "log each model call (tokens, time) to stderr (env HARNESS_VERBOSE)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

@@ -24,6 +24,9 @@ func main() {
 	}
 
 	client := &Client{BaseURL: cfg.URL, Model: cfg.Model}
+	if cfg.Verbose {
+		client.Logf = func(format string, args ...any) { fmt.Fprintf(os.Stderr, "[verbose] "+format+"\n", args...) }
+	}
 
 	// The model is stateless: it only "remembers" what we resend each turn,
 	// so we keep the whole conversation and grow it as we go.
@@ -39,7 +42,11 @@ func main() {
 		if cfg.FastModel != "" {
 			summaryClient.Model = cfg.FastModel
 		}
-		summarizer = &Summarizer{chat: func(msgs []Message) (Message, error) { return summaryClient.Chat(msgs, nil, nil) }}
+		summarizer = &Summarizer{chat: func(msgs []Message) (Message, error) {
+			reply, err := summaryClient.Chat(msgs, nil, nil)
+			summaryClient.LogLast()
+			return reply, err
+		}}
 	}
 
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}, Remember{cfg.Memory}, Recall{cfg.Memory}}

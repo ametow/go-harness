@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -61,5 +62,24 @@ func TestChatErrors(t *testing.T) {
 				t.Fatalf("err = %v, want it to contain %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestChatLogsTokenCounts(t *testing.T) {
+	c := serve(t, `{"message":{"role":"assistant","content":"hi"},"done":true,"prompt_eval_count":123,"eval_count":45}`+"\n")
+	var line string
+	c.Logf = func(format string, args ...any) { line = fmt.Sprintf(format, args...) }
+
+	if _, err := c.Chat([]Message{{Role: "user", Content: "x"}}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if line != "" {
+		t.Fatal("Chat must not log by itself; callers log after printing the reply")
+	}
+	c.LogLast()
+	for _, want := range []string{"test:", "1 messages", "read 123 tokens", "wrote 45"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log line %q missing %q", line, want)
+		}
 	}
 }

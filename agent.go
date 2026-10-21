@@ -61,6 +61,7 @@ func (a *Agent) RunTurn(history []Message) ([]Message, error) {
 		if reply.Content != "" {
 			fmt.Println() // tokens were printed as they arrived; end the line
 		}
+		client.LogLast()
 
 		// No tool calls means the model is done and this is its final answer.
 		if len(reply.ToolCalls) == 0 {

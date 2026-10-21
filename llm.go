@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // Message is one turn in a conversation. Role is "system", "user" or "assistant".
@@ -45,6 +46,20 @@ func newToolDef(t Tool) toolDef {
 type Client struct {
 	BaseURL string // e.g. http://localhost:11434
 	Model   string // e.g. llama3.2
+
+	// Logf, if set, receives one line per model call (size, tokens, time)
+	// when LogLast is called.
+	Logf func(format string, args ...any)
+	last string // description of the most recent Chat call
+}
+
+// LogLast logs the most recent Chat call. It is separate from Chat so callers
+// can log after they have finished printing the streamed reply; otherwise the
+// log line would land in the middle of it.
+func (c *Client) LogLast() {
+	if c.Logf != nil && c.last != "" {
+		c.Logf("%s", c.last)
+	}
 }
 
 type chatRequest struct {
@@ -60,6 +75,10 @@ type chatChunk struct {
 	Message Message `json:"message"`
 	Done    bool    `json:"done"`
 	Error   string  `json:"error"`
+
+	// Only on the final chunk: how many tokens the model really read and wrote.
+	PromptTokens int `json:"prompt_eval_count"`
+	ReplyTokens  int `json:"eval_count"`
 }
 
 // Chat sends the conversation to the model and returns its full reply. The
@@ -76,6 +95,7 @@ func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (M
 		return Message{}, fmt.Errorf("encode request: %w", err)
 	}
 
+	start := time.Now()
 	resp, err := http.Post(c.BaseURL+"/api/chat", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return Message{}, fmt.Errorf("call ollama (is it running?): %w", err)
@@ -102,6 +122,8 @@ func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (M
 		}
 
 		if chunk.Done {
+			c.last = fmt.Sprintf("%s: sent %d messages and %d tools; model read %d tokens, wrote %d, took %s",
+				c.Model, len(messages), len(tools), chunk.PromptTokens, chunk.ReplyTokens, time.Since(start).Round(time.Millisecond))
 			return reply, nil
 		}
 	}
