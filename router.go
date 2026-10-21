@@ -25,6 +25,7 @@ var needsMainWords = []string{
 	"remember", "recall", "remind", "note", "save", "memory", "forget",
 	"my ", " i ", "i'm", "told", "earlier", "before", "again", "previous", "last",
 	"code", "script", "```", "/", "add", "sum", "calculate",
+	"tool", "mcp", "server", "capabilit", "available", "function",
 	"fix", "debug", "error", "bug", "explain", "implement", "detail",
 	".go", ".md", ".json", ".txt", ".py", ".yaml", // file names
 }

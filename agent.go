@@ -52,9 +52,22 @@ func (a *Agent) RunTurn(history []Message) ([]Message, error) {
 			fmt.Printf("[context full: %s the %d oldest messages]\n", how, dropped)
 		}
 
-		reply, err := client.Chat(view, tools, func(tok string) { fmt.Print(tok) })
+		reply, err := client.Chat(viewFor(view, tools != nil), tools, func(tok string) { fmt.Print(tok) })
 		if err != nil {
 			return history, err
+		}
+
+		// An empty reply (no text, no tool calls) is a failure, not an answer.
+		// It must not enter the history: models copy what they see there, so
+		// one empty reply makes the next one more likely.
+		if reply.Content == "" && len(reply.ToolCalls) == 0 {
+			client.LogLast()
+			if client.Model != a.Router.Main {
+				fmt.Printf("[%s gave an empty reply; retrying with %s]\n", client.Model, a.Router.Main)
+				client.Model, tools = a.Router.Main, a.Tools
+				continue
+			}
+			return history, fmt.Errorf("%s returned an empty reply", client.Model)
 		}
 		history = append(history, reply)
 
@@ -79,6 +92,26 @@ func (a *Agent) RunTurn(history []Message) ([]Message, error) {
 		// Loop: the model now sees the results and decides what to do next.
 	}
 	return history, fmt.Errorf("gave up after %d steps without a final answer", a.MaxSteps)
+}
+
+// viewFor cleans up the history before a model sees it.
+//   - Empty assistant replies are dropped: they carry no information, and a
+//     model that sees a pile of them tends to keep answering with nothing.
+//   - If the model has no tools this turn, tool calls and tool results are
+//     dropped too. A small model shown tool traffic it can't use gets confused.
+//     Its final text answers stay, so the conversation still makes sense.
+func viewFor(msgs []Message, withTools bool) []Message {
+	out := make([]Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role == "assistant" && m.Content == "" && len(m.ToolCalls) == 0 {
+			continue
+		}
+		if !withTools && (m.Role == "tool" || len(m.ToolCalls) > 0) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // runTool executes one tool call. Failures are returned as text rather than

@@ -101,7 +101,7 @@ The sample file runs a tiny Python server with one `add` tool, so it works with 
 
 ## Model routing
 
-With `-fast-model` set, short questions and pleasantries go to the small model with no tools offered (small models call tools badly); anything that might need a tool, a longer statement (it may be something to remember), or anything substantial goes to the main model. When in doubt it picks the main model. The rules are plain keywords in `router.go`.
+With `-fast-model` set, short questions and pleasantries go to the small model with no tools offered (small models call tools badly); anything that might need a tool, a longer statement (it may be something to remember), or anything substantial goes to the main model. When in doubt it picks the main model. If the small model returns an empty reply, the turn is retried on the main model. The small model also never sees tool calls or tool results from earlier turns. The rules are plain keywords in `router.go`.
 
 ## Development
 

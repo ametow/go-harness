@@ -21,6 +21,8 @@ func TestRouterRoute(t *testing.T) {
 		{"Who am I?", "big", true},                     // needs recall
 		{"The secret word is pineapple.", "big", true}, // a statement worth saving
 		{"What is the weather like?", "small", false},
+		{"what mcp tools are available ?", "big", true}, // asks about the agent's own tools
+		{"tools list", "big", true},
 		{"What time is it?", "big", true},                                                           // needs current_time
 		{"read go.mod", "big", true},                                                                // needs read_file
 		{"What did I tell you about my dog?", "big", true},                                          // needs recall

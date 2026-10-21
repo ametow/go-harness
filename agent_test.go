@@ -133,3 +133,68 @@ func TestRunToolConfirmation(t *testing.T) {
 		})
 	}
 }
+
+func TestViewFor(t *testing.T) {
+	call := ToolCall{}
+	call.Function.Name = "add"
+	history := []Message{
+		{Role: "system", Content: "s"},
+		{Role: "user", Content: "add 1 and 2"},
+		{Role: "assistant", ToolCalls: []ToolCall{call}},
+		{Role: "tool", Content: "3"},
+		{Role: "assistant", Content: "It is 3."},
+		{Role: "user", Content: "hi"},
+		{Role: "assistant", Content: ""}, // an empty reply saved by an older version
+	}
+
+	t.Run("with tools: only empty replies are removed", func(t *testing.T) {
+		got := viewFor(history, true)
+		if len(got) != 6 {
+			t.Fatalf("got %d messages, want 6: %+v", len(got), got)
+		}
+	})
+	t.Run("without tools: tool traffic is removed too", func(t *testing.T) {
+		got := viewFor(history, false)
+		want := []string{"system", "user", "assistant", "user"}
+		if len(got) != len(want) {
+			t.Fatalf("got %d messages, want %d: %+v", len(got), len(want), got)
+		}
+		for i, role := range want {
+			if got[i].Role != role {
+				t.Fatalf("message %d is %q, want %q", i, got[i].Role, role)
+			}
+		}
+	})
+}
+
+const emptyReply = `{"message":{"role":"assistant","content":""},"done":true}`
+
+func TestRunTurnRetriesEmptyFastReplyOnMainModel(t *testing.T) {
+	client, requests := scriptedOllama(t, emptyReply, finalReply)
+	agent := newTestAgent(client, 5)
+	agent.Router = Router{Main: "big", Fast: "small"}
+
+	history, err := agent.RunTurn(start("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(*requests) != 2 || (*requests)[0].Model != "small" || (*requests)[1].Model != "big" {
+		t.Fatalf("expected small then big, got %+v", *requests)
+	}
+	if len((*requests)[1].Tools) == 0 {
+		t.Fatal("the retry on the main model should offer tools")
+	}
+	// The empty reply must not be in the history; only the real answer.
+	if last := history[len(history)-1]; last.Content != "It is noon." || len(history) != 3 {
+		t.Fatalf("history = %+v", history)
+	}
+}
+
+func TestRunTurnEmptyMainReplyIsAnError(t *testing.T) {
+	client, _ := scriptedOllama(t, emptyReply)
+	_, err := newTestAgent(client, 5).RunTurn(start("hello"))
+	if err == nil || !strings.Contains(err.Error(), "empty reply") {
+		t.Fatalf("err = %v, want an empty-reply error", err)
+	}
+}
