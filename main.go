@@ -80,6 +80,7 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 	go func() {
 		<-interrupt
+		restoreTerminal() // if Ctrl-C came while a line was being edited
 		fmt.Println()
 		closeMCP(mcpClients)
 		os.Exit(130) // the conventional exit status for "killed by Ctrl-C"
@@ -88,11 +89,12 @@ func main() {
 
 	agent := &Agent{Client: client, Router: router, Tools: tools, MaxSteps: cfg.MaxSteps, ContextTokens: cfg.ContextTokens, Summarizer: summarizer}
 
-	fmt.Printf("Chatting with %s. Type 'exit' or press Ctrl-D to quit.\n", cfg.Model)
+	state := &chatState{cfg: cfg, history: history, summarizer: summarizer, out: os.Stdout}
+
+	fmt.Printf("Chatting with %s. Type /help for commands, or press Ctrl-D to quit.\n", cfg.Model)
 
 	for {
-		fmt.Print("> ")
-		raw, err := input.ReadString('\n')
+		raw, err := readLine("> ", matchCommands, describeCommand)
 		line := strings.TrimSpace(raw)
 		if err != nil && line == "" {
 			if err != io.EOF {
@@ -108,20 +110,24 @@ func main() {
 		if line == "exit" {
 			break
 		}
+		if isCommandLine(line) {
+			if state.runCommand(line) {
+				break
+			}
+			continue
+		}
 
-		before := len(history)
-		history = append(history, Message{Role: "user", Content: line})
+		before := len(state.history)
+		state.history = append(state.history, Message{Role: "user", Content: line})
 
-		history, err = agent.RunTurn(history)
+		state.history, err = agent.RunTurn(state.history)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			// Roll back the whole failed turn so a retry starts clean.
-			history = history[:before]
+			state.history = state.history[:before]
 			continue
 		}
-		if err := saveSession(cfg.Session, history[1:]); err != nil { // [1:] skips the system message
-			fmt.Fprintln(os.Stderr, "warning: could not save session:", err)
-		}
+		state.save()
 	}
 }
 

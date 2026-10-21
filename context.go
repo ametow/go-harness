@@ -86,6 +86,13 @@ type Summarizer struct {
 	covers int                              // how many messages after the system message it accounts for
 }
 
+// Reset forgets the running summary. A nil Summarizer is fine.
+func (s *Summarizer) Reset() {
+	if s != nil {
+		s.text, s.covers = "", 0
+	}
+}
+
 // View returns the messages to send and how many old messages were left out.
 // Those are replaced by a summary appended to the system message, so the
 // history still reads system, user, assistant, ... as models expect.

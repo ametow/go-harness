@@ -11,7 +11,7 @@ ollama pull qwen3.5:9b
 go run .
 ```
 
-Type a message and press Enter. Type `exit` or press Ctrl-D to quit. Try:
+Type a message and press Enter. Type `/help` to see the commands, `/exit` or Ctrl-D to quit. Try:
 
 - `What time is it?` — the model calls the `current_time` tool.
 - `Read go.mod and tell me the Go version.`
@@ -31,6 +31,8 @@ The model only emits a tool name and arguments; this program runs the tool and s
 | File | What it does |
 |---|---|
 | `main.go` | Reads input, wires everything together, handles Ctrl-C |
+| `commands.go` | The `/` commands |
+| `lineedit.go` | Line editor with command suggestions and Tab completion |
 | `agent.go` | The loop: call the model, run tools, repeat |
 | `llm.go` | Streaming client for Ollama's `/api/chat` |
 | `tools.go` | The `Tool` interface and built-in tools |
@@ -40,6 +42,22 @@ The model only emits a tool name and arguments; this program runs the tool and s
 | `context.go` | Keeps the history within the context window (trim, summarize) |
 | `router.go` | Sends simple chat to a small fast model |
 | `config.go` | Flags and environment variables |
+
+## Commands
+
+Lines starting with `/` are handled by the program and never sent to the model. Type `/` to see suggestions as you type, and press Tab to complete.
+
+| Command | Does |
+|---|---|
+| `/help` | List the commands |
+| `/new` | Start a new conversation (long-term notes are kept) |
+| `/clean` | Remove empty replies, and the messages they failed to answer, from the history |
+| `/model` | Show the main and fast models, and how big the conversation is |
+| `/notes` | Show the saved long-term notes |
+| `/forget` | Delete all notes (asks first) |
+| `/exit` | Quit |
+
+A message like `/etc/hosts what is this?` is treated as ordinary text, not a command. Suggestions work on a terminal only; piped input is read as plain lines. Editing is basic: type, Backspace, Ctrl-U to clear the line, Tab; no arrow-key cursor movement.
 
 ## Settings
 
@@ -119,4 +137,5 @@ The tests use fake Ollama and MCP servers, so they run offline. See `CLAUDE.md` 
 - Token counts are estimates (about 4 characters per token).
 - Summaries are kept in memory only and rebuilt after a resume.
 - MCP: tools only. Images in tool results are skipped, and requests from the server to the client are ignored.
-- Unix-first: Ctrl-C handling for MCP servers uses process groups.
+- Unix-first: Ctrl-C handling for MCP servers uses process groups, and command suggestions switch the terminal mode with the `stty` tool.
+- Long input lines that wrap past the terminal width redraw badly while typing.
