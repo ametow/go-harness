@@ -14,8 +14,12 @@ import (
 // binary runs as a tiny fake MCP server, so we can test the client with no
 // external dependencies. (This is the pattern os/exec's own tests use.)
 func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_FAKE_MCP_SERVER") != "1" {
+	mode := os.Getenv("GO_FAKE_MCP_SERVER")
+	if mode == "" {
 		return
+	}
+	if mode == "stubborn" {
+		time.Sleep(time.Hour) // ignores stdin closing, like a misbehaving server
 	}
 	in := bufio.NewScanner(os.Stdin)
 	for in.Scan() {
@@ -185,5 +189,20 @@ func TestMCPCallTimeout(t *testing.T) {
 	_, err := c.call("hang", nil)
 	if err == nil || !strings.Contains(err.Error(), "no reply") {
 		t.Fatalf("err = %v, want timeout", err)
+	}
+}
+
+func TestMCPCloseKillsStubbornServer(t *testing.T) {
+	t.Setenv("GO_FAKE_MCP_SERVER", "stubborn")
+	c, err := StartMCP(os.Args[0], "-test.run=TestHelperProcess")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.closeTimeout = 200 * time.Millisecond
+
+	start := time.Now()
+	c.Close()
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("Close took %s; it should kill a server that won't exit", elapsed)
 	}
 }

@@ -28,6 +28,10 @@ type MCPClient struct {
 	// timeout bounds how long we wait for any one reply, so a hung server
 	// can't freeze the whole agent.
 	timeout time.Duration
+
+	// closeTimeout is how long Close waits for the server to exit by itself
+	// before killing it.
+	closeTimeout time.Duration
 }
 
 // rpcRequest is a JSON-RPC request. A notification is the same thing without
@@ -63,6 +67,7 @@ type ServerInfo struct {
 func StartMCP(command string, args ...string) (*MCPClient, error) {
 	cmd := exec.Command(command, args...)
 	cmd.Stderr = os.Stderr // servers log to stderr; let the user see it
+	detachFromTerminal(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -75,7 +80,7 @@ func StartMCP(command string, args ...string) (*MCPClient, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", command, err)
 	}
-	return &MCPClient{cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout), timeout: 30 * time.Second}, nil
+	return &MCPClient{cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout), timeout: 30 * time.Second, closeTimeout: 2 * time.Second}, nil
 }
 
 // Initialize performs the MCP handshake: send "initialize", read the server's
@@ -104,10 +109,20 @@ func (c *MCPClient) Initialize() (ServerInfo, error) {
 }
 
 // Close shuts the server down by closing its stdin (the polite way to say
-// "we're done" for stdio servers), then waits for it to exit.
+// "we're done" for stdio servers), then waits for it to exit. A server that
+// ignores this is killed after closeTimeout, so quitting can never hang.
 func (c *MCPClient) Close() error {
 	c.stdin.Close()
-	return c.cmd.Wait()
+
+	done := make(chan error, 1)
+	go func() { done <- c.cmd.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(c.closeTimeout):
+		c.cmd.Process.Kill()
+		return <-done
+	}
 }
 
 // call sends a request and waits for the reply, giving up after c.timeout.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 )
 
@@ -65,6 +66,17 @@ func main() {
 	}
 	mcpTools, mcpClients := connectMCPServers(servers)
 	defer closeMCP(mcpClients)
+
+	// On Ctrl-C, shut the MCP servers down cleanly before exiting. (os.Exit
+	// skips deferred calls, so this has to close them itself.)
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+	go func() {
+		<-interrupt
+		fmt.Println()
+		closeMCP(mcpClients)
+		os.Exit(130) // the conventional exit status for "killed by Ctrl-C"
+	}()
 	tools = append(tools, mcpTools...)
 
 	agent := &Agent{Client: client, Router: router, Tools: tools, MaxSteps: cfg.MaxSteps, ContextTokens: cfg.ContextTokens, Summarizer: summarizer}
