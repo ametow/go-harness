@@ -37,6 +37,8 @@ type Config struct {
 
 	ContextTokens int  // estimated tokens of history to send per call; 0 = no limit
 	Summarize     bool // summarize turns that no longer fit instead of just dropping them
+
+	FastModel string // small model for simple chit-chat; empty turns routing off
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -70,6 +72,7 @@ func parseConfig(args []string) (Config, error) {
 	fs.StringVar(&c.Memory, "memory", envOr("HARNESS_MEMORY", defaultMemory), "long-term notes file (env HARNESS_MEMORY)")
 	fs.IntVar(&c.ContextTokens, "context-tokens", contextTokens, "estimated tokens of history sent per call, 0 for no limit (env HARNESS_CONTEXT_TOKENS)")
 	fs.BoolVar(&c.Summarize, "summarize", summarize, "summarize old turns that no longer fit (env HARNESS_SUMMARIZE)")
+	fs.StringVar(&c.FastModel, "fast-model", envOr("HARNESS_FAST_MODEL", ""), "small model for simple chat; empty disables routing (env HARNESS_FAST_MODEL)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

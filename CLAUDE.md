@@ -41,7 +41,7 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 - [x] 10. **Context management:** keep the history within the model's context window. Built in two parts:
   - [x] 10a. Trimming: estimate history size and stop sending the oldest turns once over a token budget. (`context.go`)
   - [x] 10b. Summarizing: condense the dropped turns into a short summary (added to the system message) instead of forgetting them; falls back to plain trimming if the summary call fails. (`context.go`)
-- [ ] 11. **Model routing:** pick a model per task (e.g. a small fast model for simple turns, a larger one for tool use or hard problems), with a simple rule-based router first.
+- [x] 11. **Model routing:** pick a model per task, with a simple rule-based router first. Chit-chat goes to a small `-fast-model` with no tools offered; anything that might need a tool, or looks substantial, goes to the main model; in doubt, main. The fast model also does summarizing. Routing is off unless a fast model is set. (`router.go`)
 - [ ] 12. **Polish:** tests for the pure logic, error handling and logging, and a README.
 
 The order can change as we learn. Ask the owner before reordering or adding steps.
@@ -67,7 +67,7 @@ go test ./...     # run tests
 ## Local LLM
 
 - Default endpoint: `http://localhost:11434` (Ollama).
-- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, `-new` (ignore the saved conversation), `-memory`/`HARNESS_MEMORY`, and `-context-tokens`/`HARNESS_CONTEXT_TOKENS` (default 4000 estimated tokens of history per call; 0 = no limit). Keep it below Ollama's `num_ctx` for the model. `-summarize`/`HARNESS_SUMMARIZE` (default on) summarizes the trimmed turns; the summary lives in memory only and is rebuilt after a resume.
+- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, `-new` (ignore the saved conversation), `-memory`/`HARNESS_MEMORY`, and `-context-tokens`/`HARNESS_CONTEXT_TOKENS` (default 4000 estimated tokens of history per call; 0 = no limit). Keep it below Ollama's `num_ctx` for the model. `-fast-model`/`HARNESS_FAST_MODEL` (default none = no routing), `-summarize`/`HARNESS_SUMMARIZE` (default on) summarizes the trimmed turns; the summary lives in memory only and is rebuilt after a resume.
 - Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen3.5:9b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
 
 ## MCP servers

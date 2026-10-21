@@ -29,9 +29,16 @@ func main() {
 	// The system message goes first and is never trimmed or rolled back.
 	history := []Message{{Role: "system", Content: cfg.System}}
 
+	router := Router{Main: cfg.Model, Fast: cfg.FastModel}
+
 	var summarizer *Summarizer // nil means old turns are simply dropped
 	if cfg.Summarize {
-		summarizer = &Summarizer{chat: func(msgs []Message) (Message, error) { return client.Chat(msgs, nil, nil) }}
+		// Summarizing is an easy job, so it uses the fast model when there is one.
+		summaryClient := *client
+		if cfg.FastModel != "" {
+			summaryClient.Model = cfg.FastModel
+		}
+		summarizer = &Summarizer{chat: func(msgs []Message) (Message, error) { return summaryClient.Chat(msgs, nil, nil) }}
 	}
 
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}, Remember{cfg.Memory}, Recall{cfg.Memory}}
@@ -60,6 +67,8 @@ func main() {
 	defer closeMCP(mcpClients)
 	tools = append(tools, mcpTools...)
 
+	agent := &Agent{Client: client, Router: router, Tools: tools, MaxSteps: cfg.MaxSteps, ContextTokens: cfg.ContextTokens, Summarizer: summarizer}
+
 	fmt.Printf("Chatting with %s. Type 'exit' or press Ctrl-D to quit.\n", cfg.Model)
 
 	for {
@@ -84,7 +93,7 @@ func main() {
 		before := len(history)
 		history = append(history, Message{Role: "user", Content: line})
 
-		history, err = runTurn(client, history, tools, cfg.MaxSteps, cfg.ContextTokens, summarizer)
+		history, err = agent.RunTurn(history)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			// Roll back the whole failed turn so a retry starts clean.

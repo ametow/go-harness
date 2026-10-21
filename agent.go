@@ -6,21 +6,47 @@ import (
 	"strings"
 )
 
-// runTurn handles one user message: call the model, run any tools it asks
-// for, send the results back, and repeat until it answers in plain text.
-// maxSteps caps model calls per user message, so a model that keeps asking
-// for tools can't loop forever. It returns the history extended with
-// everything that happened.
-func runTurn(client *Client, history []Message, tools []Tool, maxSteps, contextTokens int, sum *Summarizer) ([]Message, error) {
-	for step := 0; step < maxSteps; step++ {
+// Agent holds everything needed to answer a user message.
+type Agent struct {
+	Client        *Client // its Model is the main model
+	Router        Router
+	Tools         []Tool
+	MaxSteps      int // cap on model calls per user message
+	ContextTokens int
+	Summarizer    *Summarizer
+}
+
+// RunTurn handles the latest user message in history: call the model, run any
+// tools it asks for, send the results back, and repeat until it answers in
+// plain text. MaxSteps stops a model that keeps asking for tools from looping
+// forever. It returns the history extended with everything that happened.
+func (a *Agent) RunTurn(history []Message) ([]Message, error) {
+	// Pick the model once per turn, from the user's message. The choice holds
+	// for every step, so a tool call never switches models half way.
+	model, withTools := a.Router.Route(history[len(history)-1].Content)
+	client := *a.Client // a copy, so the chosen model applies to this turn only
+	client.Model = model
+	tools := a.Tools
+	if !withTools {
+		tools = nil
+	}
+	if a.Router.Fast != "" {
+		note := ""
+		if !withTools {
+			note = ", no tools"
+		}
+		fmt.Printf("[model: %s%s]\n", model, note)
+	}
+
+	for step := 0; step < a.MaxSteps; step++ {
 		// Send a trimmed view; `history` itself stays complete for saving.
-		view, dropped, err := sum.View(history, contextTokens)
+		view, dropped, err := a.Summarizer.View(history, a.ContextTokens)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: %v; dropping old messages without a summary\n", err)
 		}
 		if dropped > 0 && step == 0 {
 			how := "not sending"
-			if sum != nil && err == nil {
+			if a.Summarizer != nil && err == nil {
 				how = "summarizing"
 			}
 			fmt.Printf("[context full: %s the %d oldest messages]\n", how, dropped)
@@ -51,7 +77,7 @@ func runTurn(client *Client, history []Message, tools []Tool, maxSteps, contextT
 		}
 		// Loop: the model now sees the results and decides what to do next.
 	}
-	return history, fmt.Errorf("gave up after %d steps without a final answer", maxSteps)
+	return history, fmt.Errorf("gave up after %d steps without a final answer", a.MaxSteps)
 }
 
 // runTool executes one tool call. Failures are returned as text rather than

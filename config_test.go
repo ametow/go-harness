@@ -37,13 +37,18 @@ func TestParseConfig(t *testing.T) {
 			args: []string{"-summarize=true"},
 			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 10, MCPConfig: "mcp.json", Session: "session.json", Memory: "memory.json", ContextTokens: 4000, Summarize: true},
 		},
+		{
+			name: "fast model from env",
+			env:  map[string]string{"HARNESS_FAST_MODEL": "llama3.2"},
+			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 10, MCPConfig: "mcp.json", Session: "session.json", Memory: "memory.json", ContextTokens: 4000, Summarize: true, FastModel: "llama3.2"},
+		},
 		{name: "bad bool env", env: map[string]string{"HARNESS_SUMMARIZE": "maybe"}, wantErr: true},
 		{name: "negative context", args: []string{"-context-tokens", "-5"}, wantErr: true},
 		{name: "zero steps", args: []string{"-max-steps", "0"}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			for _, k := range []string{"HARNESS_MODEL", "HARNESS_URL", "HARNESS_SYSTEM", "HARNESS_MAX_STEPS", "HARNESS_MCP_CONFIG", "HARNESS_SESSION", "HARNESS_MEMORY", "HARNESS_CONTEXT_TOKENS", "HARNESS_SUMMARIZE"} {
+			for _, k := range []string{"HARNESS_MODEL", "HARNESS_URL", "HARNESS_SYSTEM", "HARNESS_MAX_STEPS", "HARNESS_MCP_CONFIG", "HARNESS_SESSION", "HARNESS_MEMORY", "HARNESS_CONTEXT_TOKENS", "HARNESS_SUMMARIZE", "HARNESS_FAST_MODEL"} {
 				t.Setenv(k, "") // start each case from a clean environment
 			}
 			for k, v := range tt.env {
