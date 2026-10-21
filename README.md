@@ -1,6 +1,6 @@
 # go-harness
 
-A small AI agent harness written in Go with only the standard library. It runs a loop that talks to a local LLM through [Ollama](https://ollama.com), lets the model use tools, and keeps its memory on disk. About 1,500 lines, built step by step as a way to learn how agents work.
+A small AI agent harness written in Go with only the standard library. It runs a loop that talks to a local LLM through [Ollama](https://ollama.com), lets the model use tools, and keeps its memory on disk. Under 2,000 lines, built step by step as a way to learn how agents work.
 
 ## Quick start
 
