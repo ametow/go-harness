@@ -12,30 +12,30 @@ func TestParseConfig(t *testing.T) {
 	}{
 		{
 			name: "defaults",
-			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 10, MCPConfig: "mcp.json", Session: "session.json"},
+			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 10, MCPConfig: "mcp.json", Session: "session.json", Memory: "memory.json"},
 		},
 		{
 			name: "env overrides default",
 			env:  map[string]string{"HARNESS_MODEL": "llama3", "HARNESS_MAX_STEPS": "3"},
-			want: Config{Model: "llama3", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 3, MCPConfig: "mcp.json", Session: "session.json"},
+			want: Config{Model: "llama3", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 3, MCPConfig: "mcp.json", Session: "session.json", Memory: "memory.json"},
 		},
 		{
 			name: "flag overrides env",
 			env:  map[string]string{"HARNESS_MODEL": "llama3"},
 			args: []string{"-model", "qwen3.5:9b", "-system", "Be terse."},
-			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: "Be terse.", MaxSteps: 10, MCPConfig: "mcp.json", Session: "session.json"},
+			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: "Be terse.", MaxSteps: 10, MCPConfig: "mcp.json", Session: "session.json", Memory: "memory.json"},
 		},
 		{
 			name: "session flags",
 			args: []string{"-session", "chat.json", "-new"},
-			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 10, MCPConfig: "mcp.json", Session: "chat.json", NewChat: true},
+			want: Config{Model: "qwen3.5:9b", URL: "http://localhost:11434", System: defaultSystemPrompt, MaxSteps: 10, MCPConfig: "mcp.json", Session: "chat.json", NewChat: true, Memory: "memory.json"},
 		},
 		{name: "bad env number", env: map[string]string{"HARNESS_MAX_STEPS": "lots"}, wantErr: true},
 		{name: "zero steps", args: []string{"-max-steps", "0"}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			for _, k := range []string{"HARNESS_MODEL", "HARNESS_URL", "HARNESS_SYSTEM", "HARNESS_MAX_STEPS", "HARNESS_MCP_CONFIG", "HARNESS_SESSION"} {
+			for _, k := range []string{"HARNESS_MODEL", "HARNESS_URL", "HARNESS_SYSTEM", "HARNESS_MAX_STEPS", "HARNESS_MCP_CONFIG", "HARNESS_SESSION", "HARNESS_MEMORY"} {
 				t.Setenv(k, "") // start each case from a clean environment
 			}
 			for k, v := range tt.env {

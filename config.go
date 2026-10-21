@@ -13,10 +13,15 @@ const defaultMCPConfig = "mcp.json"
 // defaultSession is where the conversation is saved, in the current directory.
 const defaultSession = "session.json"
 
+// defaultMemory is where long-term notes are kept, in the current directory.
+const defaultMemory = "memory.json"
+
 const defaultSystemPrompt = `You are a helpful assistant running in a terminal on the user's computer.
 Answer directly and briefly in plain text.
 You have tools. Use one only when the request needs it: for example, the current time, a file's contents, a directory listing, or running a command.
 Do not use tools for greetings or general questions.
+When the user tells you something lasting about themselves or their preferences, save it with remember.
+When a question might depend on something the user told you before, check with recall first.
 If a tool returns an error, read it and try a different approach, or tell the user what went wrong.`
 
 // Config holds the settings that change between runs.
@@ -28,6 +33,7 @@ type Config struct {
 	MCPConfig string
 	Session   string // file the conversation is saved to and resumed from
 	NewChat   bool   // ignore any saved conversation and start fresh
+	Memory    string // file of long-term notes, kept across conversations
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -48,6 +54,7 @@ func parseConfig(args []string) (Config, error) {
 	fs.StringVar(&c.MCPConfig, "mcp-config", envOr("HARNESS_MCP_CONFIG", defaultMCPConfig), "MCP servers config file (env HARNESS_MCP_CONFIG)")
 	fs.StringVar(&c.Session, "session", envOr("HARNESS_SESSION", defaultSession), "conversation file to save and resume (env HARNESS_SESSION)")
 	fs.BoolVar(&c.NewChat, "new", false, "start a fresh conversation instead of resuming the saved one")
+	fs.StringVar(&c.Memory, "memory", envOr("HARNESS_MEMORY", defaultMemory), "long-term notes file (env HARNESS_MEMORY)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

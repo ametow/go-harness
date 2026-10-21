@@ -29,7 +29,7 @@ func main() {
 	// The system message goes first and is never trimmed or rolled back.
 	history := []Message{{Role: "system", Content: cfg.System}}
 
-	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}}
+	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}, Remember{cfg.Memory}, Recall{cfg.Memory}}
 
 	// Resume the saved conversation, unless -new. The system message is never
 	// saved: it always comes from the current config, so changing -system takes effect.

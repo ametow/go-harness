@@ -26,22 +26,27 @@ func loadSession(path string) ([]Message, error) {
 	return msgs, nil
 }
 
-// saveSession writes the conversation as JSON. It writes to a temp file and
-// renames it, so a crash mid-write can't leave a half-written session behind.
+// saveSession writes the conversation as JSON.
 func saveSession(path string, msgs []Message) error {
-	data, err := json.MarshalIndent(msgs, "", "  ")
+	return writeJSONAtomic(path, msgs)
+}
+
+// writeJSONAtomic writes v as indented JSON. It writes to a temp file and
+// renames it, so a crash mid-write can't leave a half-written file behind.
+func writeJSONAtomic(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode session: %w", err)
+		return fmt.Errorf("encode %s: %w", path, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("create session dir: %w", err)
+		return fmt.Errorf("create dir for %s: %w", path, err)
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write session: %w", err)
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("replace session: %w", err)
+		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return nil
 }
