@@ -83,3 +83,45 @@ func TestChatLogsTokenCounts(t *testing.T) {
 		}
 	}
 }
+
+func TestChatUsesThinkingWhenContentIsEmpty(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantText   string
+		wantTokens []string
+	}{
+		{
+			name: "answer only in thinking",
+			body: `{"message":{"role":"assistant","content":"","thinking":"Your name"},"done":false}
+{"message":{"role":"assistant","content":"","thinking":" is Sam."},"done":false}
+{"message":{"role":"assistant","content":""},"done":true}`,
+			wantText:   "Your name is Sam.",
+			wantTokens: []string{"Your name is Sam."}, // shown once, at the end
+		},
+		{
+			name: "real content wins; thinking is left out",
+			body: `{"message":{"role":"assistant","content":"","thinking":"let me work it out"},"done":false}
+{"message":{"role":"assistant","content":"It is 4."},"done":true}`,
+			wantText:   "It is 4.",
+			wantTokens: []string{"It is 4."},
+		},
+		{
+			name:     "a tool call is not an empty reply",
+			body:     `{"message":{"role":"assistant","content":"","thinking":"I should call a tool","tool_calls":[{"function":{"name":"current_time","arguments":{}}}]},"done":true}`,
+			wantText: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var tokens []string
+			reply, err := serve(t, tt.body+"\n").Chat(nil, nil, func(s string) { tokens = append(tokens, s) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if reply.Content != tt.wantText || !reflect.DeepEqual(tokens, tt.wantTokens) {
+				t.Fatalf("content = %q, tokens = %q; want %q, %q", reply.Content, tokens, tt.wantText, tt.wantTokens)
+			}
+		})
+	}
+}

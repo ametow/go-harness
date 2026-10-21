@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -69,12 +70,20 @@ type chatRequest struct {
 	Stream   bool      `json:"stream"` // true: reply arrives as a series of small JSON chunks
 }
 
+// chunkMessage is a Message plus the "thinking" text that reasoning models
+// (like qwen3.5) send separately from their answer. Embedding Message keeps
+// its fields (role, content, tool_calls) in the same JSON object.
+type chunkMessage struct {
+	Message
+	Thinking string `json:"thinking"`
+}
+
 // chatChunk is one line of the streamed response. Content holds a few tokens
 // of text; the last chunk has Done set.
 type chatChunk struct {
-	Message Message `json:"message"`
-	Done    bool    `json:"done"`
-	Error   string  `json:"error"`
+	Message chunkMessage `json:"message"`
+	Done    bool         `json:"done"`
+	Error   string       `json:"error"`
 
 	// Only on the final chunk: how many tokens the model really read and wrote.
 	PromptTokens int `json:"prompt_eval_count"`
@@ -105,6 +114,7 @@ func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (M
 	// The body is a stream of JSON objects, one per chunk. Decoder reads them
 	// one at a time. We stitch the chunks into a single message.
 	reply := Message{Role: "assistant"}
+	var thinking string
 	dec := json.NewDecoder(resp.Body)
 	for {
 		var chunk chatChunk
@@ -117,11 +127,22 @@ func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (M
 
 		reply.Content += chunk.Message.Content
 		reply.ToolCalls = append(reply.ToolCalls, chunk.Message.ToolCalls...)
+		thinking += chunk.Message.Thinking
 		if onToken != nil && chunk.Message.Content != "" {
 			onToken(chunk.Message.Content)
 		}
 
 		if chunk.Done {
+			// A reasoning model sometimes writes its whole answer into the
+			// thinking field and leaves the content empty. Ollama splits the two
+			// by looking for the model's think tags, and the model doesn't always
+			// close them. Without this we would throw a good answer away.
+			if reply.Content == "" && len(reply.ToolCalls) == 0 && strings.TrimSpace(thinking) != "" {
+				reply.Content = strings.TrimSpace(thinking)
+				if onToken != nil {
+					onToken(reply.Content)
+				}
+			}
 			c.last = fmt.Sprintf("%s: sent %d messages and %d tools; model read %d tokens, wrote %d, took %s",
 				c.Model, len(messages), len(tools), chunk.PromptTokens, chunk.ReplyTokens, time.Since(start).Round(time.Millisecond))
 			return reply, nil
