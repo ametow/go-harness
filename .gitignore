@@ -1,2 +1,4 @@
 .DS_Store
 go-harness
+session.json
+session.json.tmp

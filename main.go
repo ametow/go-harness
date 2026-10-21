@@ -31,6 +31,20 @@ func main() {
 
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}}
 
+	// Resume the saved conversation, unless -new. The system message is never
+	// saved: it always comes from the current config, so changing -system takes effect.
+	if !cfg.NewChat {
+		saved, err := loadSession(cfg.Session)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(2)
+		}
+		if len(saved) > 0 {
+			history = append(history, saved...)
+			fmt.Printf("Resumed %d messages from %s (use -new to start fresh).\n", len(saved), cfg.Session)
+		}
+	}
+
 	// Tools from external MCP servers join the built-in ones.
 	servers, err := loadMCPConfig(cfg.MCPConfig, cfg.MCPConfig == defaultMCPConfig)
 	if err != nil {
@@ -70,6 +84,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			// Roll back the whole failed turn so a retry starts clean.
 			history = history[:before]
+			continue
+		}
+		if err := saveSession(cfg.Session, history[1:]); err != nil { // [1:] skips the system message
+			fmt.Fprintln(os.Stderr, "warning: could not save session:", err)
 		}
 	}
 }

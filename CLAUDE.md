@@ -35,7 +35,9 @@ Built one step at a time, in order. Each step is reviewed and committed before t
   - [x] 8a. JSON-RPC over stdio and the `initialize` handshake. (`mcp.go`)
   - [x] 8b. Tool discovery: `tools/list`, wrapping each server tool as a `Tool`. (`mcp.go`)
   - [x] 8c. Config file to choose servers, `tools/call`, and the confirmation gate for MCP tools. (`mcpconfig.go`)
-- [ ] 9. **Persistent memory:** save and load conversations on disk, then longer-term facts the agent can recall across sessions. Start with plain JSON files.
+- [ ] 9. **Persistent memory:** Built in two parts:
+  - [x] 9a. Save the conversation to a JSON file after every turn and resume it on start. (`session.go`)
+  - [ ] 9b. Long-term facts: `remember` and `recall` tools backed by a JSON file, so the agent keeps notes across sessions and `-new` chats.
 - [ ] 10. **Context management:** keep the history within the model's context window by trimming or summarizing old turns.
 - [ ] 11. **Model routing:** pick a model per task (e.g. a small fast model for simple turns, a larger one for tool use or hard problems), with a simple rule-based router first.
 - [ ] 12. **Polish:** tests for the pure logic, error handling and logging, and a README.
@@ -63,7 +65,7 @@ go test ./...     # run tests
 ## Local LLM
 
 - Default endpoint: `http://localhost:11434` (Ollama).
-- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`.
+- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, and `-new` (ignore the saved conversation).
 - Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen3.5:9b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
 
 ## MCP servers
@@ -73,5 +75,7 @@ External tools come from MCP servers listed in `mcp.json` (path set by `-mcp-con
 ```json
 {"mcpServers": {"fs": {"command": "npx", "args": ["-y", "some-mcp-server", "/path"]}}}
 ```
+
+The repo's sample `mcp.json` runs `examples/adder.py`, a tiny Python server with one `add` tool, so MCP works with no downloads.
 
 Each tool is exposed to the model as `<server>__<tool>`. Every MCP tool call asks for y/N confirmation. A server that fails to start is skipped with a warning.

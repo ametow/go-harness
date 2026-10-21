@@ -10,6 +10,9 @@ import (
 // defaultMCPConfig is looked for in the current directory; it's fine if it's absent.
 const defaultMCPConfig = "mcp.json"
 
+// defaultSession is where the conversation is saved, in the current directory.
+const defaultSession = "session.json"
+
 const defaultSystemPrompt = `You are a helpful assistant running in a terminal on the user's computer.
 Answer directly and briefly in plain text.
 You have tools. Use one only when the request needs it: for example, the current time, a file's contents, a directory listing, or running a command.
@@ -23,6 +26,8 @@ type Config struct {
 	System    string
 	MaxSteps  int
 	MCPConfig string
+	Session   string // file the conversation is saved to and resumed from
+	NewChat   bool   // ignore any saved conversation and start fresh
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -41,6 +46,8 @@ func parseConfig(args []string) (Config, error) {
 	fs.StringVar(&c.System, "system", envOr("HARNESS_SYSTEM", defaultSystemPrompt), "system prompt (env HARNESS_SYSTEM)")
 	fs.IntVar(&c.MaxSteps, "max-steps", steps, "max model calls per message (env HARNESS_MAX_STEPS)")
 	fs.StringVar(&c.MCPConfig, "mcp-config", envOr("HARNESS_MCP_CONFIG", defaultMCPConfig), "MCP servers config file (env HARNESS_MCP_CONFIG)")
+	fs.StringVar(&c.Session, "session", envOr("HARNESS_SESSION", defaultSession), "conversation file to save and resume (env HARNESS_SESSION)")
+	fs.BoolVar(&c.NewChat, "new", false, "start a fresh conversation instead of resuming the saved one")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
