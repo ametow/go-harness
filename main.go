@@ -29,6 +29,11 @@ func main() {
 	// The system message goes first and is never trimmed or rolled back.
 	history := []Message{{Role: "system", Content: cfg.System}}
 
+	var summarizer *Summarizer // nil means old turns are simply dropped
+	if cfg.Summarize {
+		summarizer = &Summarizer{chat: func(msgs []Message) (Message, error) { return client.Chat(msgs, nil, nil) }}
+	}
+
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}, Remember{cfg.Memory}, Recall{cfg.Memory}}
 
 	// Resume the saved conversation, unless -new. The system message is never
@@ -79,7 +84,7 @@ func main() {
 		before := len(history)
 		history = append(history, Message{Role: "user", Content: line})
 
-		history, err = runTurn(client, history, tools, cfg.MaxSteps, cfg.ContextTokens)
+		history, err = runTurn(client, history, tools, cfg.MaxSteps, cfg.ContextTokens, summarizer)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			// Roll back the whole failed turn so a retry starts clean.

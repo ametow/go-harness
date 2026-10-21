@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -10,12 +11,19 @@ import (
 // maxSteps caps model calls per user message, so a model that keeps asking
 // for tools can't loop forever. It returns the history extended with
 // everything that happened.
-func runTurn(client *Client, history []Message, tools []Tool, maxSteps, contextTokens int) ([]Message, error) {
+func runTurn(client *Client, history []Message, tools []Tool, maxSteps, contextTokens int, sum *Summarizer) ([]Message, error) {
 	for step := 0; step < maxSteps; step++ {
 		// Send a trimmed view; `history` itself stays complete for saving.
-		view, dropped := trimHistory(history, contextTokens)
+		view, dropped, err := sum.View(history, contextTokens)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v; dropping old messages without a summary\n", err)
+		}
 		if dropped > 0 && step == 0 {
-			fmt.Printf("[context full: not sending the %d oldest messages]\n", dropped)
+			how := "not sending"
+			if sum != nil && err == nil {
+				how = "summarizing"
+			}
+			fmt.Printf("[context full: %s the %d oldest messages]\n", how, dropped)
 		}
 
 		reply, err := client.Chat(view, tools, func(tok string) { fmt.Print(tok) })

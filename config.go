@@ -35,7 +35,8 @@ type Config struct {
 	NewChat   bool   // ignore any saved conversation and start fresh
 	Memory    string // file of long-term notes, kept across conversations
 
-	ContextTokens int // estimated tokens of history to send per call; 0 = no limit
+	ContextTokens int  // estimated tokens of history to send per call; 0 = no limit
+	Summarize     bool // summarize turns that no longer fit instead of just dropping them
 }
 
 // parseConfig builds a Config from args. Precedence: flag > environment
@@ -52,6 +53,11 @@ func parseConfig(args []string) (Config, error) {
 		return Config{}, err
 	}
 
+	summarize, err := envBool("HARNESS_SUMMARIZE", true)
+	if err != nil {
+		return Config{}, err
+	}
+
 	var c Config
 	fs := flag.NewFlagSet("go-harness", flag.ContinueOnError)
 	fs.StringVar(&c.Model, "model", envOr("HARNESS_MODEL", "qwen3.5:9b"), "Ollama model name (env HARNESS_MODEL)")
@@ -63,6 +69,7 @@ func parseConfig(args []string) (Config, error) {
 	fs.BoolVar(&c.NewChat, "new", false, "start a fresh conversation instead of resuming the saved one")
 	fs.StringVar(&c.Memory, "memory", envOr("HARNESS_MEMORY", defaultMemory), "long-term notes file (env HARNESS_MEMORY)")
 	fs.IntVar(&c.ContextTokens, "context-tokens", contextTokens, "estimated tokens of history sent per call, 0 for no limit (env HARNESS_CONTEXT_TOKENS)")
+	fs.BoolVar(&c.Summarize, "summarize", summarize, "summarize old turns that no longer fit (env HARNESS_SUMMARIZE)")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -92,4 +99,16 @@ func envInt(key string, def int) (int, error) {
 		return 0, fmt.Errorf("%s must be a whole number, got %q", key, v)
 	}
 	return n, nil
+}
+
+func envBool(key string, def bool) (bool, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return def, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("%s must be true or false, got %q", key, v)
+	}
+	return b, nil
 }
