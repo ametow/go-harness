@@ -8,7 +8,7 @@ import (
 )
 
 // Slash commands are handled by the program itself and never sent to the
-// model, so a mistyped "/new" costs no model call.
+// model, so a mistyped "/clean" costs no model call.
 
 // chatState is everything a command may need to look at or change.
 type chatState struct {
@@ -32,8 +32,7 @@ var commands []command
 func init() {
 	commands = []command{
 		{"/help", "List the commands", cmdHelp},
-		{"/new", "Start a new conversation (notes are kept)", cmdNew},
-		{"/clean", "Remove empty replies from the history", cmdClean},
+		{"/clean", "Clear the conversation and the screen (notes are kept)", cmdClear},
 		{"/model", "Show models and conversation size", cmdModel},
 		{"/notes", "Show the saved long-term notes", cmdNotes},
 		{"/forget", "Delete all long-term notes", cmdForget},
@@ -88,40 +87,28 @@ func cmdHelp(s *chatState) bool {
 	return false
 }
 
-func cmdNew(s *chatState) bool {
+// cmdClear starts over, like Claude Code's /clear: the conversation, the
+// summary and the screen are wiped. Long-term notes are not part of the
+// conversation, so they stay.
+func cmdClear(s *chatState) bool {
 	s.history = s.history[:1] // keep only the system message
 	s.summarizer.Reset()
 	s.save()
-	fmt.Fprintln(s.out, "Started a new conversation. Long-term notes were kept.")
+	s.clearScreen()
+	fmt.Fprintln(s.out, "Conversation cleared. Long-term notes were kept.")
 	return false
 }
 
-func cmdClean(s *chatState) bool {
-	cleaned, removed := cleanHistory(s.history)
-	s.history = cleaned
-	s.summarizer.Reset() // it counts messages by position, which just changed
-	s.save()
-	fmt.Fprintf(s.out, "Removed %d messages.\n", removed)
-	return false
-}
-
-// cleanHistory drops empty assistant replies, and the user message each one
-// failed to answer, so the model isn't shown a pattern of saying nothing.
-func cleanHistory(msgs []Message) ([]Message, int) {
-	out := make([]Message, 0, len(msgs))
-	removed := 0
-	for _, m := range msgs {
-		if m.Role == "assistant" && m.Content == "" && len(m.ToolCalls) == 0 {
-			removed++
-			if n := len(out); n > 0 && out[n-1].Role == "user" {
-				out = out[:n-1]
-				removed++
-			}
-			continue
-		}
-		out = append(out, m)
+// clearScreen wipes the terminal and moves the cursor to the top. It does
+// nothing unless output is a terminal, so piped output stays free of escape codes.
+func (s *chatState) clearScreen() {
+	f, ok := s.out.(*os.File)
+	if !ok {
+		return
 	}
-	return out, removed
+	if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprint(f, "\x1b[2J\x1b[H")
+	}
 }
 
 func cmdModel(s *chatState) bool {

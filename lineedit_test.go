@@ -23,8 +23,8 @@ func TestEditLineEditing(t *testing.T) {
 	}{
 		{"plain text", "hello\r", "hello"},
 		{"newline also ends the line", "hello\n", "hello"},
-		{"tab completes a unique command", "/ne\t\r", "/new"},
-		{"tab completes only the shared prefix", "/n\t\r", "/n"}, // /new and /notes
+		{"tab completes a unique command", "/no\t\r", "/notes"},
+		{"tab leaves the text alone when several commands match", "/\t\r", "/"},
 		{"tab does nothing on ordinary text", "he\tllo\r", "hello"},
 		{"tab does nothing on a path", "/etc/h\t\r", "/etc/h"},
 		{"backspace", "/nx\x7f\x7fe\t\r", "/exit"}, // "/nx" -> "/n" -> "/" -> "/e" -> "/exit"
@@ -63,9 +63,8 @@ func TestEditLineHints(t *testing.T) {
 		want   []string // all must appear in the drawn output
 		absent []string
 	}{
-		{"/n", []string{"/new", "/notes"}, []string{"/help"}}, // several matches: just the names
-		{"/ne", []string{"Start a new conversation"}, nil},    // one match: with its description
-		{"/", []string{"/help", "/exit"}, nil},                // everything
+		{"/", []string{"/help", "/clean", "/exit"}, nil},                       // several matches: just the names
+		{"/no", []string{"Show the saved long-term notes"}, []string{"/help"}}, // one match: with its description
 		{"/zz", []string{"no such command"}, nil},
 		{"hello", nil, []string{dim}},      // ordinary text: never a hint
 		{"/etc/hosts", nil, []string{dim}}, // a path is not a command

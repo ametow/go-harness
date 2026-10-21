@@ -50,8 +50,7 @@ Lines starting with `/` are handled by the program and never sent to the model. 
 | Command | Does |
 |---|---|
 | `/help` | List the commands |
-| `/new` | Start a new conversation (long-term notes are kept) |
-| `/clean` | Remove empty replies, and the messages they failed to answer, from the history |
+| `/clean` | Clear the conversation and the screen, like Claude Code's `/clear` (long-term notes are kept) |
 | `/model` | Show the main and fast models, and how big the conversation is |
 | `/notes` | Show the saved long-term notes |
 | `/forget` | Delete all notes (asks first) |

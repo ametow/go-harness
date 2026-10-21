@@ -44,7 +44,7 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 - [x] 11. **Model routing:** pick a model per task, with a simple rule-based router first. Chit-chat goes to a small `-fast-model` with no tools offered; anything that might need a tool, or looks substantial, goes to the main model; in doubt, main. The fast model also does summarizing. Routing is off unless a fast model is set. (`router.go`)
 - [x] 12. **Polish:** tests for the agent loop (tool round trip, `maxSteps` cutoff, tool errors, confirmation prompt), `-verbose` logging of each model call, and a README (`README.md`).
 
-- [x] 13. **Slash commands:** `/help /new /clean /model /notes /forget /exit`, handled before the model, with live suggestions after `/` and Tab completion from a small hand-written line editor (raw mode via `stty`, no dependency). (`commands.go`, `lineedit.go`)
+- [x] 13. **Slash commands:** `/help /clean /model /notes /forget /exit` (`/clean` clears the conversation and screen like Claude Code's `/clear`), handled before the model, with live suggestions after `/` and Tab completion from a small hand-written line editor (raw mode via `stty`, no dependency). (`commands.go`, `lineedit.go`)
 
 All 13 steps are done. Ask the owner before adding new ones. Keep `README.md` in step with the settings and files.
 
