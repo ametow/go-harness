@@ -41,9 +41,19 @@ func (r Router) Route(userMessage string) (model string, withTools bool) {
 	return r.Fast, false
 }
 
+// maxStatementWords: a message that is not a question must be this short to
+// count as simple ("thanks, that was great!"). Longer statements may be news
+// the agent should save ("the secret word is pineapple"), which needs a tool.
+const maxStatementWords = 4
+
 func looksSimple(msg string) bool {
-	text := " " + strings.ToLower(strings.TrimSpace(msg)) + " "
-	if len(strings.Fields(text)) > maxSimpleWords {
+	msg = strings.TrimSpace(msg)
+	// Punctuation becomes spaces so " i " matches in "who am i?".
+	// Dots stay: they are part of file names like main.go.
+	text := " " + strings.NewReplacer("?", " ", "!", " ", ",", " ", ";", " ", ":", " ").Replace(strings.ToLower(msg)) + " "
+
+	words := len(strings.Fields(text))
+	if words > maxSimpleWords || (!strings.HasSuffix(msg, "?") && words > maxStatementWords) {
 		return false
 	}
 	for _, w := range needsMainWords {

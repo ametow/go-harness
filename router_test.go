@@ -18,6 +18,9 @@ func TestRouterRoute(t *testing.T) {
 		{"Thanks, that was great!", "small", false},
 		{"Tell me a joke", "small", false},
 		{"What is the capital of France?", "small", false},
+		{"Who am I?", "big", true},                     // needs recall
+		{"The secret word is pineapple.", "big", true}, // a statement worth saving
+		{"What is the weather like?", "small", false},
 		{"What time is it?", "big", true},                                                           // needs current_time
 		{"read go.mod", "big", true},                                                                // needs read_file
 		{"What did I tell you about my dog?", "big", true},                                          // needs recall
