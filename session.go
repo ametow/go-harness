@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -24,6 +25,30 @@ func loadSession(path string) ([]Message, error) {
 		return nil, fmt.Errorf("parse session %s (start fresh with -new): %w", path, err)
 	}
 	return msgs, nil
+}
+
+// openSession returns the conversation to start with and tells the user what
+// it did. Normally that is the saved chat. With fresh set (the -new flag) it
+// returns nothing and empties the saved file at once. Merely skipping the load
+// would leave the old chat on disk until the first reply is saved, so quitting
+// early and starting again would bring it back.
+func openSession(path string, fresh bool, out io.Writer) ([]Message, error) {
+	if fresh {
+		if err := saveSession(path, []Message{}); err != nil {
+			return nil, fmt.Errorf("clear session: %w", err)
+		}
+		fmt.Fprintf(out, "Started a new conversation (cleared %s). Long-term notes were kept.\n", path)
+		return nil, nil
+	}
+
+	saved, err := loadSession(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(saved) > 0 {
+		fmt.Fprintf(out, "Resumed %d messages from %s (use -new to start fresh).\n", len(saved), path)
+	}
+	return saved, nil
 }
 
 // saveSession writes the conversation as JSON.

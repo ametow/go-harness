@@ -69,7 +69,7 @@ go test ./...     # run tests
 ## Local LLM
 
 - Default endpoint: `http://localhost:11434` (Ollama).
-- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, `-new` (ignore the saved conversation), `-memory`/`HARNESS_MEMORY`, and `-context-tokens`/`HARNESS_CONTEXT_TOKENS` (default 4000 estimated tokens of history per call; 0 = no limit). Keep it below Ollama's `num_ctx` for the model. `-fast-model`/`HARNESS_FAST_MODEL` (default none = no routing), `-verbose`/`HARNESS_VERBOSE`, `-summarize`/`HARNESS_SUMMARIZE` (default on) summarizes the trimmed turns; the summary lives in memory only and is rebuilt after a resume.
+- Settings come from flags, then env vars, then defaults (`config.go`): `-model`/`HARNESS_MODEL`, `-url`/`HARNESS_URL`, `-system`/`HARNESS_SYSTEM`, `-max-steps`/`HARNESS_MAX_STEPS`, `-mcp-config`/`HARNESS_MCP_CONFIG`, `-session`/`HARNESS_SESSION`, `-new` (clear the saved conversation at startup), `-memory`/`HARNESS_MEMORY`, and `-context-tokens`/`HARNESS_CONTEXT_TOKENS` (default 4000 estimated tokens of history per call; 0 = no limit). Keep it below Ollama's `num_ctx` for the model. `-fast-model`/`HARNESS_FAST_MODEL` (default none = no routing), `-verbose`/`HARNESS_VERBOSE`, `-summarize`/`HARNESS_SUMMARIZE` (default on) summarizes the trimmed turns; the summary lives in memory only and is rebuilt after a resume.
 - Ollama must be running (`ollama serve`) with a tool-capable model pulled. Default is `qwen3.5:9b`; `llama3.2` (3B) calls tools indiscriminately and is not recommended.
 
 ## MCP servers

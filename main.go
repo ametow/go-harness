@@ -51,19 +51,15 @@ func main() {
 
 	tools := []Tool{Bash{}, ListDirectoryFiles{}, CurrentTime{}, ReadFile{}, Remember{cfg.Memory}, Recall{cfg.Memory}}
 
-	// Resume the saved conversation, unless -new. The system message is never
-	// saved: it always comes from the current config, so changing -system takes effect.
-	if !cfg.NewChat {
-		saved, err := loadSession(cfg.Session)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			os.Exit(2)
-		}
-		if len(saved) > 0 {
-			history = append(history, saved...)
-			fmt.Printf("Resumed %d messages from %s (use -new to start fresh).\n", len(saved), cfg.Session)
-		}
+	// Resume the saved conversation, or with -new clear it. The system message
+	// is never saved: it always comes from the current config, so changing
+	// -system takes effect.
+	saved, err := openSession(cfg.Session, cfg.NewChat, os.Stdout)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(2)
 	}
+	history = append(history, saved...)
 
 	// Tools from external MCP servers join the built-in ones.
 	servers, err := loadMCPConfig(cfg.MCPConfig, cfg.MCPConfig == defaultMCPConfig)

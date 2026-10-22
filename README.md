@@ -72,7 +72,7 @@ Each setting is a flag, with an environment variable as the fallback, then a def
 | `-context-tokens` | `HARNESS_CONTEXT_TOKENS` | `4000` | History size sent per call (estimated tokens); `0` = no limit |
 | `-summarize` | `HARNESS_SUMMARIZE` | `true` | Summarize old turns instead of dropping them |
 | `-session` | `HARNESS_SESSION` | `session.json` | Conversation file |
-| `-new` | | | Start fresh instead of resuming the session |
+| `-new` | | | Clear the saved session right away and start fresh (notes are kept) |
 | `-memory` | `HARNESS_MEMORY` | `memory.json` | Long-term notes file |
 | `-mcp-config` | `HARNESS_MCP_CONFIG` | `mcp.json` | MCP servers file |
 | `-verbose` | `HARNESS_VERBOSE` | `false` | Log each model call (tokens, time) to stderr |
@@ -112,7 +112,7 @@ The sample file runs a tiny Python server with one `add` tool, so it works with 
 
 ## Memory
 
-- **Session** (`session.json`): the whole conversation, saved after every turn and resumed on start. `-new` starts fresh.
+- **Session** (`session.json`): the whole conversation, saved after every turn and resumed on start. `-new` clears the saved file immediately, so the old chat can't come back.
 - **Notes** (`memory.json`): short facts the model saves with `remember`. They survive `-new`. Delete or edit the file to forget.
 - **Context window**: when the history outgrows `-context-tokens`, the oldest turns stop being sent and are folded into a short summary. The session file still keeps everything.
 
