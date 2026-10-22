@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -42,8 +44,8 @@ func main() {
 		if cfg.FastModel != "" {
 			summaryClient.Model = cfg.FastModel
 		}
-		summarizer = &Summarizer{chat: func(msgs []Message) (Message, error) {
-			reply, err := summaryClient.Chat(msgs, nil, nil)
+		summarizer = &Summarizer{chat: func(ctx context.Context, msgs []Message) (Message, error) {
+			reply, err := summaryClient.Chat(ctx, msgs, nil, nil)
 			summaryClient.LogLast()
 			return reply, err
 		}}
@@ -67,19 +69,26 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(2)
 	}
-	mcpTools, mcpClients := connectMCPServers(servers)
+	mcpTools, mcpClients := connectMCPServers(context.Background(), servers)
 	defer closeMCP(mcpClients)
 
-	// On Ctrl-C, shut the MCP servers down cleanly before exiting. (os.Exit
-	// skips deferred calls, so this has to close them itself.)
+	// Ctrl-C cancels the running turn; at the prompt (or pressed twice) it
+	// quits, shutting the MCP servers down cleanly first. (os.Exit skips
+	// deferred calls, so the quit path has to close them itself.)
+	turns := &turnControl{}
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 	go func() {
-		<-interrupt
-		restoreTerminal() // if Ctrl-C came while a line was being edited
-		fmt.Println()
-		closeMCP(mcpClients)
-		os.Exit(130) // the conventional exit status for "killed by Ctrl-C"
+		for range interrupt {
+			if !turns.interrupt() {
+				fmt.Println("\n[cancelling. Press Ctrl-C again to quit]")
+				continue
+			}
+			restoreTerminal() // if Ctrl-C came while a line was being edited
+			fmt.Println()
+			closeMCP(mcpClients)
+			os.Exit(130) // the conventional exit status for "killed by Ctrl-C"
+		}
 	}()
 	tools = append(tools, mcpTools...)
 
@@ -116,9 +125,15 @@ func main() {
 		before := len(state.history)
 		state.history = append(state.history, Message{Role: "user", Content: line})
 
-		state.history, err = agent.RunTurn(state.history)
+		ctx := turns.begin()
+		state.history, err = agent.RunTurn(ctx, state.history)
+		turns.end()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
+			if errors.Is(err, context.Canceled) {
+				fmt.Println("\n[cancelled]")
+			} else {
+				fmt.Fprintln(os.Stderr, "error:", err)
+			}
 			// Roll back the whole failed turn so a retry starts clean.
 			state.history = state.history[:before]
 			continue

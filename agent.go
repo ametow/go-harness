@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -18,9 +19,9 @@ type Agent struct {
 
 // RunTurn handles the latest user message in history: call the model, run any
 // tools it asks for, send the results back, and repeat until it answers in
-// plain text. MaxSteps stops a model that keeps asking for tools from looping
+// plain text. Cancelling ctx (Ctrl-C) stops the turn and returns ctx.Err(). MaxSteps stops a model that keeps asking for tools from looping
 // forever. It returns the history extended with everything that happened.
-func (a *Agent) RunTurn(history []Message) ([]Message, error) {
+func (a *Agent) RunTurn(ctx context.Context, history []Message) ([]Message, error) {
 	// Pick the model once per turn, from the user's message. The choice holds
 	// for every step, so a tool call never switches models half way.
 	model, withTools := a.Router.Route(history[len(history)-1].Content)
@@ -39,8 +40,13 @@ func (a *Agent) RunTurn(history []Message) ([]Message, error) {
 	}
 
 	for step := 0; step < a.MaxSteps; step++ {
+		// The user may have pressed Ctrl-C while a tool was running.
+		if err := ctx.Err(); err != nil {
+			return history, err
+		}
+
 		// Send a trimmed view; `history` itself stays complete for saving.
-		view, dropped, err := a.Summarizer.View(history, a.ContextTokens)
+		view, dropped, err := a.Summarizer.View(ctx, history, a.ContextTokens)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: %v; dropping old messages without a summary\n", err)
 		}
@@ -52,7 +58,7 @@ func (a *Agent) RunTurn(history []Message) ([]Message, error) {
 			fmt.Printf("[context full: %s the %d oldest messages]\n", how, dropped)
 		}
 
-		reply, err := client.Chat(viewFor(view, tools != nil), tools, func(tok string) { fmt.Print(tok) })
+		reply, err := client.Chat(ctx, viewFor(view, tools != nil), tools, func(tok string) { fmt.Print(tok) })
 		if err != nil {
 			return history, err
 		}
@@ -85,7 +91,7 @@ func (a *Agent) RunTurn(history []Message) ([]Message, error) {
 			name := call.Function.Name
 			fmt.Printf("[tool call] %s %v\n", name, call.Function.Arguments)
 
-			result := runTool(tools, call)
+			result := runTool(ctx, tools, call)
 			fmt.Printf("[tool result] %s\n", result)
 			history = append(history, Message{Role: "tool", Content: result, ToolName: name})
 		}
@@ -116,7 +122,7 @@ func viewFor(msgs []Message, withTools bool) []Message {
 
 // runTool executes one tool call. Failures are returned as text rather than
 // aborting, so the model can see the error and recover.
-func runTool(tools []Tool, call ToolCall) string {
+func runTool(ctx context.Context, tools []Tool, call ToolCall) string {
 	tool, ok := findTool(tools, call.Function.Name)
 	if !ok {
 		return fmt.Sprintf("error: unknown tool %q", call.Function.Name)
@@ -126,7 +132,7 @@ func runTool(tools []Tool, call ToolCall) string {
 	if c, ok := tool.(Confirmable); ok && !confirm(c.NeedsConfirmation(call.Function.Arguments)) {
 		return "error: the user declined this tool call; do not retry it"
 	}
-	out, err := tool.Run(call.Function.Arguments)
+	out, err := tool.Run(ctx, call.Function.Arguments)
 	if err != nil {
 		return "error: " + err.Error()
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,7 +49,7 @@ func loadMCPConfig(path string, optional bool) (map[string]MCPServerConfig, erro
 // collects their tools, each named "<server>__<tool>". A server that fails is
 // reported and skipped: one broken server shouldn't stop the agent starting.
 // The caller must Close every returned client.
-func connectMCPServers(servers map[string]MCPServerConfig) ([]Tool, []*MCPClient) {
+func connectMCPServers(ctx context.Context, servers map[string]MCPServerConfig) ([]Tool, []*MCPClient) {
 	// Sorted, so tool order (and what the model sees) is the same every run.
 	names := make([]string, 0, len(servers))
 	for name := range servers {
@@ -65,7 +66,7 @@ func connectMCPServers(servers map[string]MCPServerConfig) ([]Tool, []*MCPClient
 			fmt.Fprintf(os.Stderr, "warning: MCP server %q: %v\n", name, err)
 			continue
 		}
-		serverTools, err := initAndList(client, name+"__")
+		serverTools, err := initAndList(ctx, client, name+"__")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: MCP server %q: %v\n", name, err)
 			client.Close()
@@ -78,9 +79,9 @@ func connectMCPServers(servers map[string]MCPServerConfig) ([]Tool, []*MCPClient
 	return tools, clients
 }
 
-func initAndList(c *MCPClient, prefix string) ([]Tool, error) {
-	if _, err := c.Initialize(); err != nil {
+func initAndList(ctx context.Context, c *MCPClient, prefix string) ([]Tool, error) {
+	if _, err := c.Initialize(ctx); err != nil {
 		return nil, err
 	}
-	return c.ListTools(prefix)
+	return c.ListTools(ctx, prefix)
 }

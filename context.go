@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -81,9 +82,9 @@ const (
 // Summarizer remembers the summary between calls, so each turn only pays for
 // summarizing what newly fell out of the window.
 type Summarizer struct {
-	chat   func([]Message) (Message, error) // one plain model call, no tools
-	text   string                           // the running summary
-	covers int                              // how many messages after the system message it accounts for
+	chat   func(context.Context, []Message) (Message, error) // one plain model call, no tools
+	text   string                                            // the running summary
+	covers int                                               // how many messages after the system message it accounts for
 }
 
 // Reset forgets the running summary. A nil Summarizer is fine.
@@ -100,7 +101,7 @@ func (s *Summarizer) Reset() {
 // If summarizing fails, View returns the plain trimmed view along with the
 // error: the turn can still go ahead, just without the summary.
 // A nil Summarizer simply trims.
-func (s *Summarizer) View(history []Message, budget int) ([]Message, int, error) {
+func (s *Summarizer) View(ctx context.Context, history []Message, budget int) ([]Message, int, error) {
 	if s == nil || budget <= 0 {
 		view, dropped := trimHistory(history, budget)
 		return view, dropped, nil
@@ -116,7 +117,7 @@ func (s *Summarizer) View(history []Message, budget int) ([]Message, int, error)
 		s.text, s.covers = "", 0
 	}
 	if s.covers < dropped {
-		text, err := s.summarize(history[1+s.covers : 1+dropped])
+		text, err := s.summarize(ctx, history[1+s.covers:1+dropped])
 		if err != nil {
 			return view, dropped, err
 		}
@@ -129,7 +130,7 @@ func (s *Summarizer) View(history []Message, budget int) ([]Message, int, error)
 }
 
 // summarize folds msgs into the running summary with one model call.
-func (s *Summarizer) summarize(msgs []Message) (string, error) {
+func (s *Summarizer) summarize(ctx context.Context, msgs []Message) (string, error) {
 	fmt.Printf("[summarizing %d older messages...]\n", len(msgs))
 
 	transcript := renderTranscript(msgs)
@@ -137,7 +138,7 @@ func (s *Summarizer) summarize(msgs []Message) (string, error) {
 		"\n\nWrite an updated summary of the whole conversation in under 150 words. " +
 		"Keep names, facts, decisions, file names and unfinished tasks. Leave out pleasantries."
 
-	reply, err := s.chat([]Message{
+	reply, err := s.chat(ctx, []Message{
 		{Role: "system", Content: "You condense conversations into short summaries. Reply with the summary only."},
 		{Role: "user", Content: prompt},
 	})

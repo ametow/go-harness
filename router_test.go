@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +74,7 @@ func TestAgentUsesRoutedModel(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.msg, func(t *testing.T) {
 			got = chatRequest{}
-			if _, err := agent.RunTurn([]Message{{Role: "system", Content: "s"}, {Role: "user", Content: tt.msg}}); err != nil {
+			if _, err := agent.RunTurn(context.Background(), []Message{{Role: "system", Content: "s"}, {Role: "user", Content: tt.msg}}); err != nil {
 				t.Fatal(err)
 			}
 			if got.Model != tt.wantModel || len(got.Tools) != tt.wantTools {

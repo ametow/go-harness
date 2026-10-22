@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // scriptedOllama replies to each request with the next body in `replies`
@@ -41,7 +45,7 @@ func start(msg string) []Message {
 func TestRunTurnToolRoundTrip(t *testing.T) {
 	client, requests := scriptedOllama(t, toolCallReply, finalReply)
 
-	history, err := newTestAgent(client, 5).RunTurn(start("what time is it"))
+	history, err := newTestAgent(client, 5).RunTurn(context.Background(), start("what time is it"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +74,7 @@ func TestRunTurnToolRoundTrip(t *testing.T) {
 func TestRunTurnStopsAfterMaxSteps(t *testing.T) {
 	client, requests := scriptedOllama(t, toolCallReply) // asks for a tool forever
 
-	_, err := newTestAgent(client, 3).RunTurn(start("loop"))
+	_, err := newTestAgent(client, 3).RunTurn(context.Background(), start("loop"))
 	if err == nil || !strings.Contains(err.Error(), "gave up after 3 steps") {
 		t.Fatalf("err = %v, want give-up error", err)
 	}
@@ -82,12 +86,12 @@ func TestRunTurnStopsAfterMaxSteps(t *testing.T) {
 func TestRunToolErrorsAreReturnedAsText(t *testing.T) {
 	call := ToolCall{}
 	call.Function.Name = "no_such_tool"
-	if got := runTool(nil, call); !strings.Contains(got, `unknown tool "no_such_tool"`) {
+	if got := runTool(context.Background(), nil, call); !strings.Contains(got, `unknown tool "no_such_tool"`) {
 		t.Fatalf("got %q", got)
 	}
 
 	call.Function.Name = "read_file" // exists, but the argument is missing
-	if got := runTool([]Tool{ReadFile{}}, call); !strings.HasPrefix(got, "error: ") {
+	if got := runTool(context.Background(), []Tool{ReadFile{}}, call); !strings.HasPrefix(got, "error: ") {
 		t.Fatalf("got %q, want an error string", got)
 	}
 }
@@ -99,7 +103,10 @@ func (dangerous) Name() string                            { return "danger" }
 func (dangerous) Description() string                     { return "" }
 func (dangerous) Parameters() map[string]any              { return map[string]any{"type": "object"} }
 func (dangerous) NeedsConfirmation(map[string]any) string { return "do something risky" }
-func (d dangerous) Run(map[string]any) (string, error)    { *d.ran = true; return "done", nil }
+func (d dangerous) Run(context.Context, map[string]any) (string, error) {
+	*d.ran = true
+	return "done", nil
+}
 
 func TestRunToolConfirmation(t *testing.T) {
 	tests := []struct {
@@ -122,7 +129,7 @@ func TestRunToolConfirmation(t *testing.T) {
 			ran := false
 			call := ToolCall{}
 			call.Function.Name = "danger"
-			got := runTool([]Tool{dangerous{&ran}}, call)
+			got := runTool(context.Background(), []Tool{dangerous{&ran}}, call)
 
 			if ran != tt.wantRun {
 				t.Fatalf("tool ran = %v, want %v (result %q)", ran, tt.wantRun, got)
@@ -174,7 +181,7 @@ func TestRunTurnRetriesEmptyFastReplyOnMainModel(t *testing.T) {
 	agent := newTestAgent(client, 5)
 	agent.Router = Router{Main: "big", Fast: "small"}
 
-	history, err := agent.RunTurn(start("hello"))
+	history, err := agent.RunTurn(context.Background(), start("hello"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +200,71 @@ func TestRunTurnRetriesEmptyFastReplyOnMainModel(t *testing.T) {
 
 func TestRunTurnEmptyMainReplyIsAnError(t *testing.T) {
 	client, _ := scriptedOllama(t, emptyReply)
-	_, err := newTestAgent(client, 5).RunTurn(start("hello"))
+	_, err := newTestAgent(client, 5).RunTurn(context.Background(), start("hello"))
 	if err == nil || !strings.Contains(err.Error(), "empty reply") {
 		t.Fatalf("err = %v, want an empty-reply error", err)
+	}
+}
+
+// blockingTool waits until its context is cancelled, like a slow command would.
+type blockingTool struct{ started chan struct{} }
+
+func (blockingTool) Name() string               { return "blocker" }
+func (blockingTool) Description() string        { return "" }
+func (blockingTool) Parameters() map[string]any { return map[string]any{"type": "object"} }
+func (b blockingTool) Run(ctx context.Context, _ map[string]any) (string, error) {
+	close(b.started)
+	<-ctx.Done()
+	return "stopped", nil
+}
+
+func TestRunTurnCancelledWhileAToolRuns(t *testing.T) {
+	client, requests := scriptedOllama(t, `{"message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"blocker","arguments":{}}}]},"done":true}`)
+	tool := blockingTool{started: make(chan struct{})}
+	agent := newTestAgent(client, 5)
+	agent.Tools = []Tool{tool}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() {
+		_, err := agent.RunTurn(ctx, start("run the blocker"))
+		errc <- err
+	}()
+
+	<-tool.started // the tool is running
+	cancel()       // Ctrl-C
+
+	select {
+	case err := <-errc:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunTurn did not stop after the cancel")
+	}
+	// It must not have gone back to the model with the tool's result.
+	if len(*requests) != 1 {
+		t.Fatalf("model called %d times, want 1", len(*requests))
+	}
+}
+
+func TestRunTurnCancelledDuringModelCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body) // the server only notices a hang-up once the body is read
+		<-r.Context().Done()        // a model that never answers
+	}))
+	defer srv.Close()
+	agent := newTestAgent(&Client{BaseURL: srv.URL, Model: "test"}, 5)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+
+	history := start("hello")
+	got, err := agent.RunTurn(ctx, history)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if len(got) != len(history) {
+		t.Fatalf("history grew to %d messages; a cancelled turn must add nothing", len(got))
 	}
 }

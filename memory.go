@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +53,7 @@ func (Remember) Parameters() map[string]any {
 		"required": []string{"note"},
 	}
 }
-func (r Remember) Run(args map[string]any) (string, error) {
+func (r Remember) Run(_ context.Context, args map[string]any) (string, error) {
 	note, ok := args["note"].(string)
 	note = strings.TrimSpace(note)
 	if !ok || note == "" {
@@ -90,7 +91,7 @@ func (Recall) Parameters() map[string]any {
 		},
 	}
 }
-func (r Recall) Run(args map[string]any) (string, error) {
+func (r Recall) Run(_ context.Context, args map[string]any) (string, error) {
 	query, _ := args["query"].(string) // optional: a missing or wrong-typed query means "all"
 	query = strings.ToLower(strings.TrimSpace(query))
 

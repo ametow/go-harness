@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -90,11 +91,12 @@ type chatChunk struct {
 	ReplyTokens  int `json:"eval_count"`
 }
 
-// Chat sends the conversation to the model and returns its full reply. The
+// Chat sends the conversation to the model and returns its full reply. Cancelling
+// ctx stops the request and the stream at once and returns ctx.Err(). The
 // reply is streamed: onToken (if not nil) is called with each piece of text as
 // it arrives, so the caller can show it live. If tools are given, the reply
 // may contain ToolCalls instead of (or alongside) text.
-func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (Message, error) {
+func (c *Client) Chat(ctx context.Context, messages []Message, tools []Tool, onToken func(string)) (Message, error) {
 	req := chatRequest{Model: c.Model, Messages: messages, Stream: true}
 	for _, t := range tools {
 		req.Tools = append(req.Tools, newToolDef(t))
@@ -105,8 +107,16 @@ func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (M
 	}
 
 	start := time.Now()
-	resp, err := http.Post(c.BaseURL+"/api/chat", "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/api/chat", bytes.NewReader(body))
 	if err != nil {
+		return Message{}, fmt.Errorf("build request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return Message{}, ctx.Err() // cancelled: say so, not "is it running?"
+		}
 		return Message{}, fmt.Errorf("call ollama (is it running?): %w", err)
 	}
 	defer resp.Body.Close()
@@ -119,6 +129,9 @@ func (c *Client) Chat(messages []Message, tools []Tool, onToken func(string)) (M
 	for {
 		var chunk chatChunk
 		if err := dec.Decode(&chunk); err != nil {
+			if ctx.Err() != nil {
+				return Message{}, ctx.Err() // the stream was cut because we cancelled it
+			}
 			return Message{}, fmt.Errorf("decode response (status %s): %w", resp.Status, err)
 		}
 		if chunk.Error != "" {

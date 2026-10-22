@@ -46,7 +46,9 @@ Built one step at a time, in order. Each step is reviewed and committed before t
 
 - [x] 13. **Slash commands:** `/help /clean /model /notes /forget /exit` (`/clean` clears the conversation and screen like Claude Code's `/clear`), handled before the model, with live suggestions after `/` and Tab completion from a small hand-written line editor (raw mode via `stty`, no dependency). (`commands.go`, `lineedit.go`)
 
-All 13 steps are done. Ask the owner before adding new ones. Keep `README.md` in step with the settings and files.
+- [x] 14. **Cancellation:** a `context.Context` runs from `main` through `RunTurn`, `Client.Chat`, `Tool.Run` and the MCP client. Ctrl-C cancels the running turn (the model stream, a shell command and its children, an MCP call) and rolls it back; at the prompt it quits. The MCP client has one reader goroutine that matches replies to waiting calls by id, so a cancelled or timed-out call leaves the connection usable. (`interrupt.go`, `mcp.go`)
+
+All 14 steps are done. Ask the owner before adding new ones. Keep `README.md` in step with the settings and files.
 
 ## Conventions
 

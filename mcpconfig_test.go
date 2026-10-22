@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func TestConnectMCPServers(t *testing.T) {
 		"fake": {Command: os.Args[0], Args: []string{"-test.run=TestHelperProcess"}},
 		"gone": {Command: "definitely-not-a-real-command"}, // must be skipped, not fatal
 	}
-	tools, clients := connectMCPServers(servers)
+	tools, clients := connectMCPServers(context.Background(), servers)
 	defer func() {
 		for _, c := range clients {
 			c.Close()

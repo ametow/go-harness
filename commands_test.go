@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,7 +71,7 @@ func TestCommandClear(t *testing.T) {
 
 func TestClearKeepsNotes(t *testing.T) {
 	s, _ := newState(t)
-	if _, err := (Remember{s.cfg.Memory}).Run(map[string]any{"note": "likes teal"}); err != nil {
+	if _, err := (Remember{s.cfg.Memory}).Run(context.Background(), map[string]any{"note": "likes teal"}); err != nil {
 		t.Fatal(err)
 	}
 	s.runCommand("/clean")
@@ -116,7 +117,7 @@ func TestCommandNotesAndForget(t *testing.T) {
 		t.Fatalf("output = %q", out.String())
 	}
 
-	if _, err := (Remember{s.cfg.Memory}).Run(map[string]any{"note": "likes teal"}); err != nil {
+	if _, err := (Remember{s.cfg.Memory}).Run(context.Background(), map[string]any{"note": "likes teal"}); err != nil {
 		t.Fatal(err)
 	}
 	out.Reset()

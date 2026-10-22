@@ -30,7 +30,8 @@ The model only emits a tool name and arguments; this program runs the tool and s
 
 | File | What it does |
 |---|---|
-| `main.go` | Reads input, wires everything together, handles Ctrl-C |
+| `main.go` | Reads input, wires everything together |
+| `interrupt.go` | Decides what Ctrl-C does: cancel the turn, or quit |
 | `commands.go` | The `/` commands |
 | `lineedit.go` | Line editor with command suggestions and Tab completion |
 | `agent.go` | The loop: call the model, run tools, repeat |
@@ -57,6 +58,12 @@ Lines starting with `/` are handled by the program and never sent to the model. 
 | `/exit` | Quit |
 
 A message like `/etc/hosts what is this?` is treated as ordinary text, not a command. Suggestions work on a terminal only; piped input is read as plain lines. Editing is basic: type, Backspace, Ctrl-U to clear the line, Tab; no arrow-key cursor movement.
+
+## Cancelling
+
+Ctrl-C while the model is answering or a tool is running cancels that turn and returns to the prompt. The turn is rolled back, so it leaves nothing in the conversation. Ctrl-C at the prompt, or a second Ctrl-C while a turn is still stopping, quits.
+
+A running `bash` command is stopped together with anything it started. An MCP server is told to stop working on the request and keeps running. If you press Ctrl-C at an `Allow ...? [y/N]` prompt, the cancel takes effect when you press Enter.
 
 ## Settings
 
@@ -136,5 +143,6 @@ The tests use fake Ollama and MCP servers, so they run offline. See `CLAUDE.md` 
 - Token counts are estimates (about 4 characters per token).
 - Summaries are kept in memory only and rebuilt after a resume.
 - MCP: tools only. Images in tool results are skipped, and requests from the server to the client are ignored.
+- Ctrl-C at a `[y/N]` prompt waits for Enter, because the harness is blocked reading your answer.
 - Unix-first: Ctrl-C handling for MCP servers uses process groups, and command suggestions switch the terminal mode with the `stty` tool.
 - Long input lines that wrap past the terminal width redraw badly while typing.

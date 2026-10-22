@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -83,7 +84,7 @@ type fakeChat struct {
 	err     error
 }
 
-func (f *fakeChat) chat(msgs []Message) (Message, error) {
+func (f *fakeChat) chat(_ context.Context, msgs []Message) (Message, error) {
 	if f.err != nil {
 		return Message{}, f.err
 	}
@@ -107,7 +108,7 @@ func TestSummarizerView(t *testing.T) {
 		f := &fakeChat{}
 		s := &Summarizer{chat: f.chat}
 		h := longChat(1)
-		view, dropped, err := s.View(h, budget)
+		view, dropped, err := s.View(context.Background(), h, budget)
 		if err != nil || dropped != 0 || len(view) != len(h) || len(f.prompts) != 0 {
 			t.Fatalf("dropped=%d err=%v calls=%d", dropped, err, len(f.prompts))
 		}
@@ -118,7 +119,7 @@ func TestSummarizerView(t *testing.T) {
 		s := &Summarizer{chat: f.chat}
 		h := longChat(5)
 
-		view, dropped, err := s.View(h, budget)
+		view, dropped, err := s.View(context.Background(), h, budget)
 		if err != nil || dropped == 0 {
 			t.Fatalf("dropped=%d err=%v", dropped, err)
 		}
@@ -136,14 +137,14 @@ func TestSummarizerView(t *testing.T) {
 		}
 
 		// Same history again: the cached summary is reused.
-		if _, _, err := s.View(h, budget); err != nil || len(f.prompts) != 1 {
+		if _, _, err := s.View(context.Background(), h, budget); err != nil || len(f.prompts) != 1 {
 			t.Fatalf("expected cache hit, got %d calls (err %v)", len(f.prompts), err)
 		}
 
 		// A longer history drops more: only the newly dropped turns are summarized,
 		// and the previous summary is passed along.
 		h = append(h, longChat(7)[11:]...) // adds turns 6 and 7
-		if _, _, err := s.View(h, budget); err != nil {
+		if _, _, err := s.View(context.Background(), h, budget); err != nil {
 			t.Fatal(err)
 		}
 		if len(f.prompts) != 2 || !strings.Contains(f.prompts[1], "SUMMARY-1") {
@@ -153,7 +154,7 @@ func TestSummarizerView(t *testing.T) {
 
 	t.Run("failure falls back to plain trimming", func(t *testing.T) {
 		s := &Summarizer{chat: (&fakeChat{err: errors.New("model down")}).chat}
-		view, dropped, err := s.View(longChat(5), budget)
+		view, dropped, err := s.View(context.Background(), longChat(5), budget)
 		if err == nil || dropped == 0 {
 			t.Fatalf("dropped=%d err=%v; want an error and a trimmed view", dropped, err)
 		}
@@ -164,7 +165,7 @@ func TestSummarizerView(t *testing.T) {
 
 	t.Run("nil summarizer just trims", func(t *testing.T) {
 		var s *Summarizer
-		_, dropped, err := s.View(longChat(5), budget)
+		_, dropped, err := s.View(context.Background(), longChat(5), budget)
 		if err != nil || dropped == 0 {
 			t.Fatalf("dropped=%d err=%v", dropped, err)
 		}

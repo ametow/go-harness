@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // serve returns a fake Ollama that replies with the given streamed body.
@@ -25,7 +29,7 @@ func TestChatStreamsAndJoinsChunks(t *testing.T) {
 {"message":{"role":"assistant","content":"!"},"done":true}
 `)
 	var tokens []string
-	reply, err := c.Chat(nil, nil, func(s string) { tokens = append(tokens, s) })
+	reply, err := c.Chat(context.Background(), nil, nil, func(s string) { tokens = append(tokens, s) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +45,7 @@ func TestChatCollectsToolCalls(t *testing.T) {
 	c := serve(t, `{"message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"current_time","arguments":{}}}]},"done":false}
 {"message":{"role":"assistant","content":""},"done":true}
 `)
-	reply, err := c.Chat(nil, nil, nil)
+	reply, err := c.Chat(context.Background(), nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +61,7 @@ func TestChatErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := serve(t, tt.body).Chat(nil, nil, nil)
+			_, err := serve(t, tt.body).Chat(context.Background(), nil, nil, nil)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("err = %v, want it to contain %q", err, tt.want)
 			}
@@ -70,7 +74,7 @@ func TestChatLogsTokenCounts(t *testing.T) {
 	var line string
 	c.Logf = func(format string, args ...any) { line = fmt.Sprintf(format, args...) }
 
-	if _, err := c.Chat([]Message{{Role: "user", Content: "x"}}, nil, nil); err != nil {
+	if _, err := c.Chat(context.Background(), []Message{{Role: "user", Content: "x"}}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if line != "" {
@@ -115,7 +119,7 @@ func TestChatUsesThinkingWhenContentIsEmpty(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var tokens []string
-			reply, err := serve(t, tt.body+"\n").Chat(nil, nil, func(s string) { tokens = append(tokens, s) })
+			reply, err := serve(t, tt.body+"\n").Chat(context.Background(), nil, nil, func(s string) { tokens = append(tokens, s) })
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -123,5 +127,45 @@ func TestChatUsesThinkingWhenContentIsEmpty(t *testing.T) {
 				t.Fatalf("content = %q, tokens = %q; want %q, %q", reply.Content, tokens, tt.wantText, tt.wantTokens)
 			}
 		})
+	}
+}
+
+func TestChatCancelStopsTheStream(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body) // the server only notices a hang-up once the body is read
+		w.Write([]byte(`{"message":{"role":"assistant","content":"Once"},"done":false}` + "\n"))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done() // then the "model" goes quiet until the client hangs up
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var got []string
+	c := &Client{BaseURL: srv.URL, Model: "test"}
+
+	start := time.Now()
+	_, err := c.Chat(ctx, nil, nil, func(s string) {
+		got = append(got, s)
+		cancel() // the user presses Ctrl-C after the first word
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled (not a decode error)", err)
+	}
+	if !reflect.DeepEqual(got, []string{"Once"}) {
+		t.Fatalf("tokens before the cancel = %q", got)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatal("Chat did not return promptly after the cancel")
+	}
+}
+
+func TestChatCancelledBeforeTheCall(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := serve(t, `{"message":{"content":"x"},"done":true}`+"\n").Chat(ctx, nil, nil, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled, not \"is it running?\"", err)
 	}
 }

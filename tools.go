@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -30,7 +31,9 @@ type Tool interface {
 	// Parameters is a JSON Schema describing the arguments, sent to the model
 	// so it knows how to call the tool.
 	Parameters() map[string]any
-	Run(args map[string]any) (string, error)
+	// Run executes the tool. ctx is cancelled when the user interrupts the
+	// turn, so a long-running tool should stop promptly when it is.
+	Run(ctx context.Context, args map[string]any) (string, error)
 }
 
 // Confirmable is implemented by tools that can change things (run commands,
@@ -67,26 +70,36 @@ func (Bash) Parameters() map[string]any {
 func (Bash) NeedsConfirmation(args map[string]any) string {
 	return fmt.Sprintf("bash command: %v", args["command"])
 }
-func (Bash) Run(args map[string]any) (string, error) {
+func (Bash) Run(ctx context.Context, args map[string]any) (string, error) {
 	cmd, ok := args["command"].(string)
 	if !ok || cmd == "" {
 		return "", fmt.Errorf("missing string argument 'command'")
 	}
-	return runShellCommand(cmd), nil
+	return runShellCommand(ctx, cmd), nil
 }
 
 // runShellCommand returns the combined output. A failing command is not a Go
 // error: the model needs to see the output and exit status to fix its command.
-func runShellCommand(cmd string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), bashTimeout)
+//
+// The command stops when the parent ctx is cancelled (the user pressed Ctrl-C)
+// or after bashTimeout, whichever comes first.
+func runShellCommand(parent context.Context, cmd string) string {
+	ctx, cancel := context.WithTimeout(parent, bashTimeout)
 	defer cancel()
 
-	out, err := exec.CommandContext(ctx, "bash", "-c", cmd).CombinedOutput()
+	c := exec.CommandContext(ctx, "bash", "-c", cmd)
+	killGroupOnCancel(c) // also stop anything the command started
+	// If a grandchild still holds the output pipe, don't wait on it forever.
+	c.WaitDelay = time.Second
+
+	out, err := c.CombinedOutput()
 	result := truncate(string(out))
-	if ctx.Err() == context.DeadlineExceeded {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return result + fmt.Sprintf("\n[killed after %s]", bashTimeout)
-	}
-	if err != nil {
+	case ctx.Err() != nil:
+		return result + "\n[cancelled]"
+	case err != nil:
 		return result + fmt.Sprintf("\n[command failed: %v]", err)
 	}
 	return result
@@ -113,7 +126,7 @@ func (this ListDirectoryFiles) Parameters() map[string]any {
 	}
 }
 
-func (this ListDirectoryFiles) Run(args map[string]any) (string, error) {
+func (this ListDirectoryFiles) Run(_ context.Context, args map[string]any) (string, error) {
 	path, ok := args["path"].(string)
 	if !ok || path == "" {
 		return "", fmt.Errorf("missing string argument 'path'")
@@ -141,7 +154,7 @@ func (CurrentTime) Description() string { return "Get the current local date and
 func (CurrentTime) Parameters() map[string]any {
 	return map[string]any{"type": "object", "properties": map[string]any{}}
 }
-func (CurrentTime) Run(map[string]any) (string, error) {
+func (CurrentTime) Run(context.Context, map[string]any) (string, error) {
 	return time.Now().Format(time.RFC1123), nil
 }
 
@@ -159,7 +172,7 @@ func (ReadFile) Parameters() map[string]any {
 		"required": []string{"path"},
 	}
 }
-func (ReadFile) Run(args map[string]any) (string, error) {
+func (ReadFile) Run(_ context.Context, args map[string]any) (string, error) {
 	// Model-supplied arguments are untrusted input, so check the type.
 	path, ok := args["path"].(string)
 	if !ok || path == "" {
